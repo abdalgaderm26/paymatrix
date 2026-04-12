@@ -20,7 +20,7 @@ import { OrdersModule } from './orders/orders.module';
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        uri: configService.get<string>('MONGODB_URI') || configService.get<string>('MONGO_URL'),
+        uri: configService.get<string>('MONGODB_URI') || configService.get<string>('MONGO_URL') || configService.get<string>('MONGODB_URL') || configService.get<string>('DATABASE_URL'),
       }),
       inject: [ConfigService],
     }),
