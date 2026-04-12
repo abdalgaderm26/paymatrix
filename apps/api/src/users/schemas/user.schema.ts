@@ -29,6 +29,9 @@ export class User extends Document {
 
   @Prop({ default: 0 })
   total_earned_from_referrals: number;
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

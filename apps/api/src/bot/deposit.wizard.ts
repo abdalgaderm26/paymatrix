@@ -4,12 +4,12 @@ import { Scenes } from 'telegraf';
 import { i18n } from './i18n';
 import { UsersService } from '../users/users.service';
 
-export interface WizardContext extends Scenes.WizardContext {
-  session: Scenes.WizardSessionData & {
-    depositAmount?: number;
-    paymentMethod?: string;
-  };
+interface MyWizardSession extends Scenes.WizardSessionData {
+  depositAmount?: number;
+  paymentMethod?: string;
 }
+
+export interface WizardContext extends Scenes.WizardContext<MyWizardSession> {}
 
 @Injectable()
 @Wizard('DEPOSIT_WIZARD')

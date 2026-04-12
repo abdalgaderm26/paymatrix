@@ -27,7 +27,7 @@ import { OrdersModule } from './orders/orders.module';
     TelegrafModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        token: configService.get<string>('BOT_TOKEN'),
+        token: configService.get<string>('BOT_TOKEN') || '',
         middlewares: [session()],
       }),
       inject: [ConfigService],
