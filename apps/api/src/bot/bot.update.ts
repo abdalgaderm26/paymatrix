@@ -1,5 +1,5 @@
 import { UseGuards } from '@nestjs/common';
-import { Start, Update, Ctx, Help, Action, On, Command } from 'nestjs-telegraf';
+import { Start, Update, Ctx, Help, Action, On, Command, Message } from 'nestjs-telegraf';
 import { Context, Markup, Scenes } from 'telegraf';
 import { UsersService } from '../users/users.service';
 import { ServicesService } from '../services/services.service';
@@ -16,7 +16,7 @@ export class BotUpdate {
 
   @Start()
   async onStart(@Ctx() ctx: Context) {
-    const from = ctx.message?.from;
+    const from = ctx.message?.from || ctx.callbackQuery?.from;
     if (!from) return;
 
     // Create or find user in DB
@@ -32,7 +32,6 @@ export class BotUpdate {
       if (text.startsWith('/start ref_')) {
         const referredBy = parseInt(text.split('_')[1]);
         if (!isNaN(referredBy) && referredBy !== from.id) {
-           // We could check if user already existed before creating
            if (!user.referred_by && user.createdAt === user.updatedAt) {
               user.referred_by = referredBy;
               await user.save();
@@ -45,16 +44,67 @@ export class BotUpdate {
     
     // Check if is admin
     const isAdmin = from.id.toString() === process.env.ADMIN_ID;
-    const adminBtn = isAdmin ? [[Markup.button.callback('🛡️ لوحة الإدارة', 'admin_panel')]] : [];
+    
+    // Setup the main bottom persistent keyboard (ReplyKeyboardMarkup)
+    const mainKeyboard = Markup.keyboard([
+      [t.btn_services, t.btn_wallet],
+      [t.btn_orders, t.btn_deposit],
+      [t.btn_support, t.btn_language]
+    ]).resize();
 
     await ctx.reply(t.welcome(user.full_name, user.wallet_balance) + `\n\n🔗 رابط الدعوة الخاص بك لربح المكافآت:\nhttps://t.me/PayMatrixBot?start=ref_${from.id}`, {
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback(t.btn_services, 'view_services')],
-        [Markup.button.callback(t.btn_wallet, 'view_wallet'), Markup.button.callback(t.btn_orders, 'view_orders')],
-        [Markup.button.callback(t.btn_support, 'support'), Markup.button.callback(t.btn_language, 'change_language')],
-        ...adminBtn
-      ])
+      ...mainKeyboard
     });
+
+    if (isAdmin) {
+      await ctx.reply('🛡️ خيارات مدير النظام:', {
+        ...Markup.inlineKeyboard([[Markup.button.callback('🛡️ الدخول للوحة الإدارة', 'admin_panel')]])
+      });
+    }
+  }
+
+  // Intercept normal text messages for keyboard matching
+  @On('text')
+  async onTextMessage(@Ctx() ctx: Context, @Message('text') text: string) {
+    const from = ctx.message?.from;
+    if (!from) return;
+
+    // Fetch user for fast translation check
+    const user = await this.usersService.findByTelegramId(from.id);
+    const lang = user?.language === 'en' ? 'en' : 'ar';
+    const t = i18n[lang as keyof typeof i18n];
+
+    // Reset wizard session cleanly if user clicks a main menu button to avoid being trapped in text input
+    const isMenuButton = [
+      t.btn_services, t.btn_wallet, t.btn_orders, t.btn_deposit, t.btn_support, t.btn_language,
+      i18n.ar.btn_services, i18n.en.btn_services, i18n.ar.btn_wallet, i18n.en.btn_wallet
+    ].includes(text);
+
+    if (isMenuButton && (ctx as any).scene) {
+      await (ctx as any).scene.leave();
+    }
+
+    // Handlers
+    if (text === t.btn_services || text === i18n.ar.btn_services || text === i18n.en.btn_services) {
+        return this.onServicesAction(ctx);
+    }
+    if (text === t.btn_wallet || text === i18n.ar.btn_wallet || text === i18n.en.btn_wallet) {
+        return this.onWalletAction(ctx);
+    }
+    if (text === t.btn_deposit || text === i18n.ar.btn_deposit || text === i18n.en.btn_deposit) {
+        return this.onDepositAction(ctx as Scenes.SceneContext);
+    }
+    if (text === t.btn_language || text === i18n.ar.btn_language || text === i18n.en.btn_language) {
+        return this.onChangeLanguage(ctx);
+    }
+    if (text === t.btn_orders || text === i18n.ar.btn_orders || text === i18n.en.btn_orders) {
+        await ctx.reply('🧾 طلباتي: نظام الطلبات قيد الإعداد قريباً.');
+        return;
+    }
+    if (text === t.btn_support || text === i18n.ar.btn_support || text === i18n.en.btn_support) {
+        await ctx.reply('🎧 الدعم الفني: أرسل استفسارك وسيقوم أحد ممثلينا بالرد عليك قريباً.');
+        return;
+    }
   }
 
   @Command('admin')
@@ -82,8 +132,8 @@ export class BotUpdate {
 
   @Action('view_services')
   async onServicesAction(@Ctx() ctx: Context) {
-    await ctx.answerCbQuery();
-    const from = ctx.callbackQuery?.from;
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    const from = ctx.from;
     if (!from) return;
     const user = await this.usersService.findByTelegramId(from.id);
     const t = i18n[(user?.language as keyof typeof i18n) || 'ar'];
@@ -96,7 +146,6 @@ export class BotUpdate {
     }
 
     const buttons = services.map(s => [Markup.button.callback(`🔹 ${s.name} - $${s.price_usd}`, `s_${s._id.toString()}`)]);
-    buttons.push([Markup.button.callback(t.btn_back, 'back_home')]);
 
     await ctx.reply('الخدمات المتوفرة حالياً:\nاختر خدمة لمعرفة المزيد:', {
       ...Markup.inlineKeyboard(buttons)
@@ -105,8 +154,8 @@ export class BotUpdate {
 
   @Action('view_wallet')
   async onWalletAction(@Ctx() ctx: Context) {
-    await ctx.answerCbQuery();
-    const from = ctx.callbackQuery?.from;
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    const from = ctx.from;
     if (!from) return;
 
     const user = await this.usersService.findByTelegramId(from.id);
@@ -116,22 +165,21 @@ export class BotUpdate {
     await ctx.reply(t.wallet_info(user.wallet_balance), {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback(t.btn_deposit, 'deposit')],
-        [Markup.button.callback(t.btn_back, 'back_home')]
+        [Markup.button.callback(t.btn_deposit, 'deposit')]
       ])
     });
   }
 
   @Action('deposit')
   async onDepositAction(@Ctx() ctx: Scenes.SceneContext) {
-    await ctx.answerCbQuery();
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
     await ctx.scene.enter('DEPOSIT_WIZARD');
   }
 
   @Action('change_language')
   async onChangeLanguage(@Ctx() ctx: Context) {
-    await ctx.answerCbQuery();
-    const from = ctx.callbackQuery?.from;
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    const from = ctx.from;
     if (!from) return;
 
     let user = await this.usersService.findByTelegramId(from.id);
@@ -139,23 +187,24 @@ export class BotUpdate {
 
     const newLang = user.language === 'ar' ? 'en' : 'ar';
     user.language = newLang;
-    await user.save(); // Needs to access save, better to abstract if needed but works for mongoose Document
+    await user.save();
 
     const t = i18n[newLang as keyof typeof i18n];
     await ctx.reply(t.language_changed);
-    // Restart logic to re-render buttons
+    
+    // Refresh keyboard with new language
     await this.onStart(ctx);
   }
 
   @Action('back_home')
   async onBackHome(@Ctx() ctx: Context) {
-    await ctx.answerCbQuery();
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
     await this.onStart(ctx);
   }
 
   @Action(/^s_(.+)$/)
   async onServiceClick(@Ctx() ctx: Context) {
-    await ctx.answerCbQuery();
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
     const serviceId = (ctx as any).match[1];
     const service = await this.servicesService.findById(serviceId);
     
@@ -181,11 +230,10 @@ export class BotUpdate {
 
   @Action(/^buy_(.+)$/)
   async onBuyService(@Ctx() ctx: Context) {
-    await ctx.answerCbQuery();
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
     const serviceId = (ctx as any).match[1];
     
-    // In a real flow, better to ask for confirmation or lock transaction
-    const from = ctx.callbackQuery?.from;
+    const from = ctx.from;
     if (!from) return;
 
     const user = await this.usersService.findByTelegramId(from.id);
@@ -195,12 +243,11 @@ export class BotUpdate {
 
     if (user.wallet_balance < service.price_usd) {
       await ctx.reply(`❌ رصيدك الحالي ($${user.wallet_balance}) غير كافٍ لإتمام عملية الشراء لخدمة بقيمة ($${service.price_usd}).\nيرجى شحن محفظتك أولاً.`, {
-        ...Markup.inlineKeyboard([[Markup.button.callback('💵 إيداع', 'deposit'), Markup.button.callback('🔙 رجوع', 'back_home')]])
+        ...Markup.inlineKeyboard([[Markup.button.callback('💵 إيداع', 'deposit')]])
       });
       return;
     }
 
-    // Process Purchase (Mock logic)
     user.wallet_balance -= service.price_usd;
     await user.save();
 
