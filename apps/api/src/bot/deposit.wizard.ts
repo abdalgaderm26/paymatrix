@@ -37,7 +37,7 @@ export class DepositWizard {
       return;
     }
 
-    ctx.session.depositAmount = amount;
+    ctx.scene.session.depositAmount = amount;
     
     await ctx.reply(`المبلغ: $${amount}\n\nطرق الدفع المتاحة:\n1. العملات الرقمية USDT (TRC20)\nالعنوان: \`TYourUSDTAddressHere\`\n2. تحويل بنكي (رقم الحساب 123456789)\n\nيرجى إرسال **صورة إيصال التحويل** هنا:`, { parse_mode: 'Markdown' });
     ctx.wizard.next();
