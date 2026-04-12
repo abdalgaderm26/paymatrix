@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { ServicesModule } from './services/services.module';
 import { OrdersModule } from './orders/orders.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { OrdersModule } from './orders/orders.module';
     TransactionsModule,
     ServicesModule,
     OrdersModule,
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
