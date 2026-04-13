@@ -1,10 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
+:root {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  color: #1e293b;
+  background: #f8fafc;
+}
+
+html[dir="rtl"] input,
+html[dir="rtl"] textarea,
+html[dir="rtl"] select {
+  text-align: right;
+}
+
+input[dir="ltr"],
+textarea[dir="ltr"] {
+  text-align: left !important;
+  direction: ltr;
+}
+
+/* Smooth scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation: fadeIn 0.5s ease-out both;
+}
+
+.fade-in { --tw-enter-opacity: initial; }
+.slide-in-from-bottom-4 { --tw-enter-translate-y: 1rem; }
+
+/* Glass utilities */
 @layer utilities {
   .glass {
     @apply bg-white/30 backdrop-blur-md border border-white/20 shadow-lg;
   }
-  
   .glass-dark {
     @apply bg-black/30 backdrop-blur-md border border-white/10 shadow-lg;
   }

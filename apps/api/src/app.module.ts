@@ -11,6 +11,7 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { ServicesModule } from './services/services.module';
 import { OrdersModule } from './orders/orders.module';
 import { SettingsModule } from './settings/settings.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { SettingsModule } from './settings/settings.module';
     ServicesModule,
     OrdersModule,
     SettingsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -3,6 +3,7 @@ import { Ctx, Message, On, Wizard, WizardStep } from 'nestjs-telegraf';
 import { Markup, Scenes } from 'telegraf';
 import { i18n } from './i18n';
 import { UsersService } from '../users/users.service';
+import { TransactionsService } from '../transactions/transactions.service';
 import { SettingsService, DEFAULT_WALLETS } from '../settings/settings.service';
 
 interface MyWizardSession extends Scenes.WizardSessionData {
@@ -19,7 +20,8 @@ export interface WizardContext extends Scenes.WizardContext<MyWizardSession> {}
 export class DepositWizard {
   constructor(
     private readonly usersService: UsersService,
-    private readonly settingsService: SettingsService
+    private readonly settingsService: SettingsService,
+    private readonly transactionsService: TransactionsService,
   ) {}
 
   @WizardStep(1)
@@ -28,10 +30,12 @@ export class DepositWizard {
     const user = from ? await this.usersService.findByTelegramId(from.id) : null;
     const t = i18n[(user?.language as keyof typeof i18n) || 'ar'];
 
-    await ctx.reply(t.language_changed === '✅ Language changed to English.' 
-      ? 'Please enter the amount you want to deposit in USD (e.g. 10):\n\nOr send /cancel to abort.'
-      : 'يرجى إدخال المبلغ المراد إيداعه بالدولار (مثال: 10):\n\nأو أرسل /cancel للإلغاء.');
-    
+    await ctx.reply(
+      t.language_changed === '✅ Language changed to English.'
+        ? 'Please enter the amount you want to deposit in USD (e.g. 10):\n\nOr send /cancel to abort.'
+        : 'يرجى إدخال المبلغ المراد إيداعه بالدولار (مثال: 10):\n\nأو أرسل /cancel للإلغاء.',
+    );
+
     ctx.wizard.next();
   }
 
@@ -39,8 +43,8 @@ export class DepositWizard {
   @On('text')
   async step2(@Ctx() ctx: WizardContext, @Message('text') msg: string) {
     if (msg === '/cancel') {
-        await ctx.reply('تم الإلغاء.');
-        return ctx.scene.leave();
+      await ctx.reply('تم الإلغاء.');
+      return ctx.scene.leave();
     }
 
     const amount = parseFloat(msg);
@@ -50,28 +54,28 @@ export class DepositWizard {
     }
 
     ctx.scene.session.depositAmount = amount;
-    
-    // Fetch all active payment methods
+
     const allWallets = await this.settingsService.getAllDepositMethods();
-    
-    // Filter out "Not Configured" ones for users, or show them if admin (but this is user flow)
-    const availableWallets = DEFAULT_WALLETS.filter(dw => {
-        const dbW = allWallets.find(w => w.key === dw.key);
-        return dbW && dbW.value !== 'غير محدد' && dbW.value.trim() !== '';
+    const availableWallets = DEFAULT_WALLETS.filter((dw) => {
+      const dbW = allWallets.find((w) => w.key === dw.key);
+      return dbW && dbW.value !== 'غير محدد' && dbW.value.trim() !== '';
     });
 
     if (availableWallets.length === 0) {
-        await ctx.reply('عذراً، بوابات الدفع قيد الصيانة حالياً. يرجى المحاولة لاحقاً.');
-        return ctx.scene.leave();
+      await ctx.reply('عذراً، بوابات الدفع قيد الصيانة حالياً. يرجى المحاولة لاحقاً.');
+      return ctx.scene.leave();
     }
 
-    const buttons = availableWallets.map(w => [Markup.button.callback(`التحويل عبر: ${w.label}`, `pay_${w.key}`)]);
+    const buttons = availableWallets.map((w) => [
+      Markup.button.callback(`التحويل عبر: ${w.label}`, `pay_${w.key}`),
+    ]);
     buttons.push([Markup.button.callback('🚫 إلغاء العملية', 'cancel_deposit')]);
 
-    await ctx.reply(`المبلغ المطلوب: $${amount}\n\nيرجى اختيار طريقة الدفع التي تفضلها من القائمة أدناه:`, {
-      ...Markup.inlineKeyboard(buttons)
-    });
-    
+    await ctx.reply(
+      `المبلغ المطلوب: $${amount}\n\nيرجى اختيار طريقة الدفع التي تفضلها من القائمة أدناه:`,
+      { ...Markup.inlineKeyboard(buttons) },
+    );
+
     ctx.wizard.next();
   }
 
@@ -82,27 +86,30 @@ export class DepositWizard {
     const data = (ctx.callbackQuery as any).data;
 
     if (data === 'cancel_deposit') {
-        await ctx.reply('تم إلغاء عملية الإيداع.');
-        return ctx.scene.leave();
+      await ctx.reply('تم إلغاء عملية الإيداع.');
+      return ctx.scene.leave();
     }
 
     if (data && data.startsWith('pay_')) {
-        const methodKey = data.split('pay_')[1];
-        const allWallets = await this.settingsService.getAllDepositMethods();
-        const dbW = allWallets.find(w => w.key === methodKey);
-        const labelDef = DEFAULT_WALLETS.find(w => w.key === methodKey);
+      const methodKey = data.split('pay_')[1];
+      const allWallets = await this.settingsService.getAllDepositMethods();
+      const dbW = allWallets.find((w) => w.key === methodKey);
+      const labelDef = DEFAULT_WALLETS.find((w) => w.key === methodKey);
 
-        if (!dbW || !labelDef) {
-            await ctx.reply('حدث خطأ. يرجى إعادة المحاولة.');
-            return ctx.scene.leave();
-        }
+      if (!dbW || !labelDef) {
+        await ctx.reply('حدث خطأ. يرجى إعادة المحاولة.');
+        return ctx.scene.leave();
+      }
 
-        ctx.scene.session.paymentMethodKey = methodKey;
-        ctx.scene.session.paymentMethodLabel = labelDef.label;
-        ctx.scene.session.paymentMethodValue = dbW.value;
+      ctx.scene.session.paymentMethodKey = methodKey;
+      ctx.scene.session.paymentMethodLabel = labelDef.label;
+      ctx.scene.session.paymentMethodValue = dbW.value;
 
-        await ctx.reply(`اخترت الدفع عبر: **${labelDef.label}**\n\n📌 **بيانات التحويل الخاصة بنا:**\n\`${dbW.value}\`\n\nيرجى تحويل مبلغ $${ctx.scene.session.depositAmount} ثم إرسال **صورة إيصال التحويل** هنا ليتم التحقق منها.`, { parse_mode: 'Markdown' });
-        ctx.wizard.next();
+      await ctx.reply(
+        `اخترت الدفع عبر: **${labelDef.label}**\n\n📌 **بيانات التحويل الخاصة بنا:**\n\`${dbW.value}\`\n\nيرجى تحويل مبلغ $${ctx.scene.session.depositAmount} ثم إرسال **صورة إيصال التحويل** هنا ليتم التحقق منها.`,
+        { parse_mode: 'Markdown' },
+      );
+      ctx.wizard.next();
     }
   }
 
@@ -116,21 +123,55 @@ export class DepositWizard {
     }
 
     const fileId = photo[photo.length - 1].file_id;
-    
-    // Here we should save to DB in "transactions" table with status pending.
-    // For now we just mock
-    
-    await ctx.reply('✅ تم استلام طلب الإيداع. سيتم مراجعته من قبل الإدارة وإضافة الرصيد قريباً.');
+    const from = ctx.from;
+    if (!from) return ctx.scene.leave();
+
+    const user = await this.usersService.findByTelegramId(from.id);
+    if (!user) return ctx.scene.leave();
+
+    // Save transaction to database
+    await this.transactionsService.create({
+      user_id: user._id as any,
+      type: 'deposit',
+      amount: ctx.scene.session.depositAmount || 0,
+      method: ctx.scene.session.paymentMethodLabel || 'unknown',
+      status: 'pending',
+      proof_file_id: fileId,
+    });
+
+    await ctx.reply(
+      '✅ تم استلام طلب الإيداع بنجاح!\n\n' +
+      `💵 المبلغ: $${ctx.scene.session.depositAmount}\n` +
+      `🏦 الطريقة: ${ctx.scene.session.paymentMethodLabel}\n\n` +
+      'سيتم مراجعته من قبل الإدارة وإضافة الرصيد قريباً.',
+    );
+
+    // Notify admin
+    try {
+      const adminId = process.env.ADMIN_ID;
+      if (adminId) {
+        await (ctx as any).telegram.sendPhoto(adminId, fileId, {
+          caption:
+            `📥 **طلب إيداع جديد!**\n\n` +
+            `👤 ${user.full_name} (@${user.username || 'N/A'})\n` +
+            `🆔 ${from.id}\n` +
+            `💵 المبلغ: $${ctx.scene.session.depositAmount}\n` +
+            `🏦 الطريقة: ${ctx.scene.session.paymentMethodLabel}`,
+          parse_mode: 'Markdown',
+        });
+      }
+    } catch {}
+
     ctx.scene.leave();
   }
 
   @WizardStep(4)
   @On('text')
   async step4Text(@Ctx() ctx: WizardContext, @Message('text') msg: string) {
-       if (msg === '/cancel') {
-          await ctx.reply('تم الإلغاء.');
-          return ctx.scene.leave();
-       }
-       await ctx.reply('الرجاء إرسال **صورة إيصال التحويل** ليتم استكمال الطلب.');
+    if (msg === '/cancel') {
+      await ctx.reply('تم الإلغاء.');
+      return ctx.scene.leave();
+    }
+    await ctx.reply('الرجاء إرسال **صورة إيصال التحويل** ليتم استكمال الطلب.', { parse_mode: 'Markdown' });
   }
 }
