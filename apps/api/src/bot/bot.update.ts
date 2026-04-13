@@ -53,9 +53,11 @@ export class BotUpdate {
       [t.btn_support, t.btn_language],
     ]).resize();
 
+    const botUsername = ctx.botInfo?.username || 'PayMatrixBot';
+
     await ctx.reply(
       t.welcome(user.full_name, user.wallet_balance) +
-        `\n\n🔗 رابط الدعوة الخاص بك لربح المكافآت:\nhttps://t.me/PayMatrixBot?start=ref_${from.id}`,
+        `\n\n🔗 رابط الدعوة الخاص بك لربح المكافآت:\nhttps://t.me/${botUsername}?start=ref_${from.id}`,
       { ...mainKeyboard },
     );
 
