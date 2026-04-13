@@ -65,6 +65,14 @@ export class UsersService {
     return user;
   }
 
+  async updateRole(telegramId: number, role: 'user' | 'admin'): Promise<User | null> {
+    return this.userModel.findOneAndUpdate(
+      { telegram_id: telegramId },
+      { role },
+      { new: true },
+    );
+  }
+
   async banUser(telegramId: number): Promise<User | null> {
     return this.userModel.findOneAndUpdate(
       { telegram_id: telegramId },
@@ -102,5 +110,9 @@ export class UsersService {
   async getAllUserIds(): Promise<number[]> {
     const users = await this.userModel.find({ is_banned: false }, { telegram_id: 1 });
     return users.map(u => u.telegram_id);
+  }
+
+  async getAdmins(): Promise<User[]> {
+    return this.userModel.find({ role: 'admin' });
   }
 }

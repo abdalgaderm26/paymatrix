@@ -92,14 +92,25 @@ export default function UsersPage() {
                     {user.is_banned
                       ? <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">محظور</span>
                       : <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">نشط</span>}
+                    <div className="mt-1">
+                      {user.role === 'admin'
+                        ? <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">مشرف</span>
+                        : <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">عضو</span>}
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-slate-500 text-xs">{new Date(user.createdAt).toLocaleDateString('ar-EG')}</td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center justify-center gap-1.5">
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
                       <button onClick={() => setModal({ user, type: 'add' })} className="p-2 rounded-lg hover:bg-emerald-100 text-emerald-600 transition-colors" title="إضافة رصيد"><Plus size={16} /></button>
-                      <button onClick={() => setModal({ user, type: 'deduct' })} className="p-2 rounded-lg hover:bg-amber-100 text-amber-600 transition-colors" title="خصم رصيد"><Minus size={16} /></button>
+                      <button onClick={() => setModal({ user, type: 'deduct' })} className="p-2 rounded-lg hover:bg-rose-100 text-rose-600 transition-colors" title="خصم رصيد"><Minus size={16} /></button>
                       <button onClick={() => toggleBan(user)} className={`p-2 rounded-lg transition-colors ${user.is_banned ? 'hover:bg-green-100 text-green-600' : 'hover:bg-red-100 text-red-600'}`} title={user.is_banned ? 'فك الحظر' : 'حظر'}>
                         {user.is_banned ? <ShieldCheck size={16} /> : <Ban size={16} />}
+                      </button>
+                      <button onClick={async () => {
+                        await api.patch(`/users/${user.telegram_id}/role`, { role: user.role === 'admin' ? 'user' : 'admin' });
+                        fetchUsers(page, search);
+                      }} className={`p-2 rounded-lg text-xs leading-none font-bold transition-colors ${user.role === 'admin' ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' : 'text-slate-600 bg-slate-50 hover:bg-slate-200'}`} title={user.role === 'admin' ? 'إزالة الإشراف' : 'ترقية لمشرف'}>
+                        {user.role === 'admin' ? 'إلغاء الإشراف' : 'ترقية لمشرف'}
                       </button>
                     </div>
                   </td>

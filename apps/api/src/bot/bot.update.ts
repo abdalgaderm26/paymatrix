@@ -6,7 +6,7 @@ import { ServicesService } from '../services/services.service';
 import { TransactionsService } from '../transactions/transactions.service';
 import { OrdersService } from '../orders/orders.service';
 import { SettingsService, DEFAULT_WALLETS } from '../settings/settings.service';
-import { i18n } from './i18n';
+import { i18n, isMenuButton } from './i18n';
 import { BanGuard } from './guards/ban.guard';
 
 @Update()
@@ -19,6 +19,25 @@ export class BotUpdate {
     private readonly transactionsService: TransactionsService,
     private readonly ordersService: OrdersService,
   ) {}
+
+  async checkIsAdmin(ctx: Context): Promise<boolean> {
+    const fromId = ctx.from?.id;
+    if (!fromId) return false;
+    if (fromId.toString() === process.env.ADMIN_ID) return true;
+    const user = await this.usersService.findByTelegramId(fromId);
+    return user?.role === 'admin';
+  }
+
+  async formatMoney(amount: number): Promise<string> {
+    try {
+      const rateStr = await this.settingsService.getSetting('EXCHANGE_RATE_SDG');
+      const rate = rateStr ? parseFloat(rateStr) : 1970;
+      const sdgAmount = Math.round(amount * rate);
+      return `$${amount.toLocaleString()} (≈ ${sdgAmount.toLocaleString()} SDG)`;
+    } catch {
+      return `$${amount.toLocaleString()}`;
+    }
+  }
 
   @Start()
   async onStart(@Ctx() ctx: Context) {
@@ -45,14 +64,20 @@ export class BotUpdate {
     }
 
     const t = i18n[user.language as keyof typeof i18n] || i18n.ar;
-    const isAdmin = from.id.toString() === process.env.ADMIN_ID;
+    const isAdmin = await this.checkIsAdmin(ctx);
 
-    const mainKeyboard = Markup.keyboard([
+    const keyboardButtons = [
       [t.btn_services, t.btn_wallet],
       [t.btn_orders, t.btn_deposit],
       [t.btn_referral, t.btn_support],
       [t.btn_language],
-    ]).resize();
+    ];
+
+    if (isAdmin) {
+      keyboardButtons.push([t.btn_admin_panel]);
+    }
+
+    const mainKeyboard = Markup.keyboard(keyboardButtons).resize();
 
     let botUsername = process.env.BOT_USERNAME || ctx.botInfo?.username;
     if (!botUsername) {
@@ -65,18 +90,10 @@ export class BotUpdate {
     }
 
     await ctx.reply(
-      t.welcome(user.full_name, user.wallet_balance) +
+      t.welcome(user.full_name, await this.formatMoney(user.wallet_balance)) +
         `\n\n🔗 رابط الدعوة الخاص بك لربح المكافآت:\nhttps://t.me/${botUsername}?start=ref_${from.id}`,
       { ...mainKeyboard },
     );
-
-    if (isAdmin) {
-      await ctx.reply('🛡️ خيارات الإدارة:', {
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('🛡️ فتح لوحة تحكم الإدارة', 'admin_panel')],
-        ]),
-      });
-    }
   }
 
   @On('text')
@@ -88,15 +105,7 @@ export class BotUpdate {
     const lang = user?.language === 'en' ? 'en' : 'ar';
     const t = i18n[lang as keyof typeof i18n];
 
-    const isMenuButton = [
-      t.btn_services, t.btn_wallet, t.btn_orders, t.btn_deposit, t.btn_support, t.btn_language, t.btn_referral,
-      i18n.ar.btn_services, i18n.en.btn_services, i18n.ar.btn_wallet, i18n.en.btn_wallet,
-      i18n.ar.btn_orders, i18n.en.btn_orders, i18n.ar.btn_deposit, i18n.en.btn_deposit,
-      i18n.ar.btn_support, i18n.en.btn_support, i18n.ar.btn_language, i18n.en.btn_language,
-      i18n.ar.btn_referral, i18n.en.btn_referral,
-    ].includes(text);
-
-    if (isMenuButton && (ctx as any).scene) {
+    if (isMenuButton(text) && (ctx as any).scene) {
       await (ctx as any).scene.leave();
     }
 
@@ -114,6 +123,9 @@ export class BotUpdate {
     }
     if (text === t.btn_orders || text === i18n.ar.btn_orders || text === i18n.en.btn_orders) {
       return this.onMyOrders(ctx);
+    }
+    if (text === t.btn_admin_panel || text === i18n.ar.btn_admin_panel || text === i18n.en.btn_admin_panel) {
+      return this.onAdminPanel(ctx);
     }
     if (text === t.btn_support || text === i18n.ar.btn_support || text === i18n.en.btn_support) {
       await ctx.reply('🎧 الدعم الفني: أرسل استفسارك وسيقوم أحد ممثلي الدعم بالرد قريباً.');
@@ -139,8 +151,7 @@ export class BotUpdate {
   @Action('admin_panel')
   async onAdminPanel(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    const from = ctx.from;
-    if (!from || from.id.toString() !== process.env.ADMIN_ID) return;
+    if (!(await this.checkIsAdmin(ctx))) return;
 
     const stats = await this.usersService.getStats();
     const txStats = await this.transactionsService.getStats();
@@ -465,20 +476,97 @@ export class BotUpdate {
   @Action('admin_users_funds')
   async onAdminUsersFunds(@Ctx() ctx: Scenes.SceneContext) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
-    await ctx.scene.enter('ADMIN_USERS_WIZARD');
+    if (!await this.checkIsAdmin(ctx)) return;
+    return this.renderUsersPage(ctx, 1, false);
   }
 
-  @Action('admin_ban_user')
-  async onAdminBanUser(@Ctx() ctx: Context) {
+  @Action(/^admin_users_page_(\d+)$/)
+  async onAdminUsersPage(@Ctx() ctx: Scenes.SceneContext) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
+    const page = parseInt((ctx as any).match[1]);
+    return this.renderUsersPage(ctx, page, true);
+  }
 
-    await ctx.reply(
-      '🚫 **حظر مستخدم:**\nأرسل Telegram ID الخاص بالمستخدم لحظره.\n\nأو أرسل /cancel للإلغاء.',
-      { parse_mode: 'Markdown' },
+  async renderUsersPage(ctx: Scenes.SceneContext, page: number, isEdit: boolean) {
+    const { users, pages } = await this.usersService.findAll(page, 7);
+    const buttons = users.map(u => [
+       Markup.button.callback(`👤 ${u.full_name} | $${u.wallet_balance}`, `admin_u_opts_${u.telegram_id}`)
+    ]);
+
+    const nav = [];
+    if (page > 1) nav.push(Markup.button.callback('⬅️ السابق', `admin_users_page_${page - 1}`));
+    if (page < pages) nav.push(Markup.button.callback('التالي ➡️', `admin_users_page_${page + 1}`));
+    if (nav.length) buttons.push(nav);
+
+    buttons.push([Markup.button.callback('🔍 بحث بالاسم/الآيدي', 'admin_search_users')]);
+    buttons.push([Markup.button.callback('🔙 رجوع', 'admin_panel')]);
+
+    const text = `👥 **إدارة المستخدمين**\nصفحة ${page} من ${pages}:\nاختر مستخدماً لعرض الخيارات:`;
+    if (isEdit && ctx.callbackQuery) {
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) });
+    } else {
+      await ctx.reply(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) });
+    }
+  }
+
+  @Action(/^admin_u_opts_(\d+)$/)
+  async onAdminUserOpts(@Ctx() ctx: Scenes.SceneContext) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    const tId = parseInt((ctx as any).match[1]);
+    const user = await this.usersService.findByTelegramId(tId);
+    if (!user) {
+      await ctx.reply('❌ المستخدم غير موجود.');
+      return;
+    }
+
+    const buttons = [
+      [Markup.button.callback('➕ إضافة رصيد', `u_add_${tId}`), Markup.button.callback('➖ خصم', `u_deduct_${tId}`)],
+      [Markup.button.callback(user.is_banned ? 'فك الحظر ✅' : 'حظر 🚫', `u_ban_${tId}`)],
+      [Markup.button.callback('🔙 عودة للقائمة', 'admin_users_funds')]
+    ];
+
+    await ctx.editMessageText(
+      `👤 **${user.full_name}**\n` +
+      `📌 ID: \`${user.telegram_id}\`\n` +
+      `💰 الرصيد الحالي: ${await this.formatMoney(user.wallet_balance)}\n` +
+      `🛑 الحالة: ${user.is_banned ? 'محظور' : 'نشط'}\n\n` +
+      `ما العمليات التي تود تنفيذها؟`,
+      { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) }
     );
   }
+
+  @Action(/^u_ban_(\d+)$/)
+  async onAdminBanUserToggle(@Ctx() ctx: Scenes.SceneContext) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    const tId = parseInt((ctx as any).match[1]);
+    const user = await this.usersService.findByTelegramId(tId);
+    if (user) {
+      user.is_banned = !user.is_banned;
+      await user.save();
+      await ctx.reply(`✅ تم ${user.is_banned ? 'حظر' : 'فك حظر'} المستخدم ${user.full_name}.`);
+    }
+  }
+
+  @Action(/^u_(add|deduct)_(\d+)$/)
+  async onAdminUFundsDirect(@Ctx() ctx: Scenes.SceneContext) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    const match = (ctx as any).match;
+    const op = match[1].toUpperCase();
+    const tId = parseInt(match[2]);
+    await ctx.scene.enter('ADMIN_USERS_WIZARD', { targetUserId: tId, operation: op });
+  }
+
+  @Action('admin_search_users')
+  async onAdminSearchUsers(@Ctx() ctx: Scenes.SceneContext) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    await ctx.scene.enter('ADMIN_USERS_WIZARD', { searchMode: true });
+  }
+
 
   // ======================== USER: SERVICES ========================
   @Action('view_services')
@@ -527,7 +615,7 @@ export class BotUpdate {
       }
     }
 
-    await ctx.reply(t.wallet_info(user.wallet_balance) + historyText, {
+    await ctx.reply(t.wallet_info(await this.formatMoney(user.wallet_balance)) + historyText, {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([[Markup.button.callback(t.btn_deposit, 'deposit')]]),
     });

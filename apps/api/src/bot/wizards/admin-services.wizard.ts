@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Ctx, Message, On, Wizard, WizardStep } from 'nestjs-telegraf';
+import { isMenuButton } from '../i18n';
 import { Markup, Scenes } from 'telegraf';
 import { ServicesService } from '../../services/services.service';
+
+import { UsersService } from '../../users/users.service';
 
 interface AdminServicesSession extends Scenes.WizardSessionData {
   serviceName?: string;
@@ -15,11 +18,19 @@ export interface AdminServicesContext extends Scenes.WizardContext<AdminServices
 @Injectable()
 @Wizard('ADMIN_SERVICES_WIZARD')
 export class AdminServicesWizard {
-  constructor(private readonly servicesService: ServicesService) {}
+  constructor(
+    private readonly servicesService: ServicesService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @WizardStep(1)
   async step1(@Ctx() ctx: AdminServicesContext) {
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return ctx.scene.leave();
+    const fromId = ctx.from?.id;
+    if (!fromId) return ctx.scene.leave();
+    const user = await this.usersService.findByTelegramId(fromId);
+    if (fromId.toString() !== process.env.ADMIN_ID && user?.role !== 'admin') {
+      return ctx.scene.leave();
+    }
 
     await ctx.reply(
       '➕ **إضافة خدمة جديدة**\n\n📌 الخطوة 1/4: أرسل اسم الخدمة:\n\nأو أرسل /cancel للإلغاء.',
@@ -31,8 +42,8 @@ export class AdminServicesWizard {
   @WizardStep(2)
   @On('text')
   async step2(@Ctx() ctx: AdminServicesContext, @Message('text') msg: string) {
-    if (msg.startsWith('/')) {
-      await ctx.reply('تم الإلغاء.');
+    if (msg.startsWith('/') || isMenuButton(msg)) {
+      await ctx.reply('تم الإلغاء. يرجى اختيار الإجراء من القائمة.');
       return ctx.scene.leave();
     }
     ctx.scene.session.serviceName = msg;
@@ -46,8 +57,8 @@ export class AdminServicesWizard {
   @WizardStep(3)
   @On('text')
   async step3(@Ctx() ctx: AdminServicesContext, @Message('text') msg: string) {
-    if (msg.startsWith('/')) {
-      await ctx.reply('تم الإلغاء.');
+    if (msg.startsWith('/') || isMenuButton(msg)) {
+      await ctx.reply('تم الإلغاء. يرجى اختيار الإجراء من القائمة.');
       return ctx.scene.leave();
     }
     ctx.scene.session.serviceDesc = msg;
@@ -61,8 +72,8 @@ export class AdminServicesWizard {
   @WizardStep(4)
   @On('text')
   async step4(@Ctx() ctx: AdminServicesContext, @Message('text') msg: string) {
-    if (msg.startsWith('/')) {
-      await ctx.reply('تم الإلغاء.');
+    if (msg.startsWith('/') || isMenuButton(msg)) {
+      await ctx.reply('تم الإلغاء. يرجى اختيار الإجراء من القائمة.');
       return ctx.scene.leave();
     }
     const price = parseFloat(msg);
@@ -81,8 +92,8 @@ export class AdminServicesWizard {
   @WizardStep(5)
   @On('text')
   async step5(@Ctx() ctx: AdminServicesContext, @Message('text') msg: string) {
-    if (msg.startsWith('/')) {
-      await ctx.reply('تم الإلغاء.');
+    if (msg.startsWith('/') || isMenuButton(msg)) {
+      await ctx.reply('تم الإلغاء. يرجى اختيار الإجراء من القائمة.');
       return ctx.scene.leave();
     }
 

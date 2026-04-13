@@ -73,6 +73,19 @@ export class AdminController {
     return user;
   }
 
+  @Patch('users/:telegramId/role')
+  async updateRole(
+    @Param('telegramId') telegramId: string,
+    @Body() body: { role: 'user' | 'admin' },
+  ) {
+    if (!['user', 'admin'].includes(body.role)) {
+      throw new HttpException('Invalid role', HttpStatus.BAD_REQUEST);
+    }
+    const user = await this.usersService.updateRole(+telegramId, body.role);
+    if (!user) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+    return user;
+  }
+
   @Patch('users/:telegramId/ban')
   async toggleBan(
     @Param('telegramId') telegramId: string,
@@ -215,7 +228,8 @@ export class AdminController {
   @Get('settings')
   async getSettings() {
     const wallets = await this.settingsService.getAllDepositMethods();
-    return { wallets };
+    const platformSettings = await this.settingsService.getAllPlatformSettings();
+    return { wallets, platformSettings };
   }
 
   @Put('settings/:key')

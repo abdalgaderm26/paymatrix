@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Ctx, Message, On, Wizard, WizardStep } from 'nestjs-telegraf';
 import { Markup, Scenes } from 'telegraf';
-import { i18n } from './i18n';
+import { i18n, isMenuButton } from './i18n';
 import { UsersService } from '../users/users.service';
 import { TransactionsService } from '../transactions/transactions.service';
 import { SettingsService, DEFAULT_WALLETS } from '../settings/settings.service';
@@ -42,8 +42,8 @@ export class DepositWizard {
   @WizardStep(2)
   @On('text')
   async step2(@Ctx() ctx: WizardContext, @Message('text') msg: string) {
-    if (msg.startsWith('/')) {
-      await ctx.reply('تم الإلغاء. يرجى إرسال الأمر مرة أخرى.');
+    if (msg.startsWith('/') || isMenuButton(msg)) {
+      await ctx.reply('تم الإلغاء. يرجى اختيار الإجراء من القائمة.');
       return ctx.scene.leave();
     }
 
@@ -56,9 +56,8 @@ export class DepositWizard {
     ctx.scene.session.depositAmount = amount;
 
     const allWallets = await this.settingsService.getAllDepositMethods();
-    const availableWallets = DEFAULT_WALLETS.filter((dw) => {
-      const dbW = allWallets.find((w) => w.key === dw.key);
-      return dbW && dbW.value !== 'غير محدد' && dbW.value.trim() !== '';
+    const availableWallets = allWallets.filter((w) => {
+      return w.value && w.value !== 'غير محدد' && w.value.trim() !== '';
     });
 
     if (availableWallets.length === 0) {
@@ -66,9 +65,11 @@ export class DepositWizard {
       return ctx.scene.leave();
     }
 
-    const buttons = availableWallets.map((w) => [
-      Markup.button.callback(`التحويل عبر: ${w.label}`, `pay_${w.key}`),
-    ]);
+    const buttons = availableWallets.map((w) => {
+      const def = DEFAULT_WALLETS.find(d => d.key === w.key);
+      const label = w.label || (def ? def.label : w.key);
+      return [Markup.button.callback(`التحويل عبر: ${label}`, `pay_${w.key}`)];
+    });
     buttons.push([Markup.button.callback('🚫 إلغاء العملية', 'cancel_deposit')]);
 
     await ctx.reply(
@@ -146,19 +147,24 @@ export class DepositWizard {
       'سيتم مراجعته من قبل الإدارة وإضافة الرصيد قريباً.',
     );
 
-    // Notify admin
+    // Notify admins
     try {
-      const adminId = process.env.ADMIN_ID;
-      if (adminId) {
-        await (ctx as any).telegram.sendPhoto(adminId, fileId, {
-          caption:
-            `📥 **طلب إيداع جديد!**\n\n` +
-            `👤 ${user.full_name} (@${user.username || 'N/A'})\n` +
-            `🆔 ${from.id}\n` +
-            `💵 المبلغ: $${ctx.scene.session.depositAmount}\n` +
-            `🏦 الطريقة: ${ctx.scene.session.paymentMethodLabel}`,
-          parse_mode: 'Markdown',
-        });
+      const admins = await this.usersService.getAdmins();
+      const adminIds = new Set(admins.map(a => a.telegram_id.toString()));
+      if (process.env.ADMIN_ID) adminIds.add(process.env.ADMIN_ID);
+      
+      for (const adminId of adminIds) {
+        try {
+          await (ctx as any).telegram.sendPhoto(adminId, fileId, {
+            caption:
+              `📥 **طلب إيداع جديد!**\n\n` +
+              `👤 ${user.full_name} (@${user.username || 'N/A'})\n` +
+              `🆔 ${from.id}\n` +
+              `💵 المبلغ: $${ctx.scene.session.depositAmount}\n` +
+              `🏦 الطريقة: ${ctx.scene.session.paymentMethodLabel}`,
+            parse_mode: 'Markdown',
+          });
+        } catch (err) {}
       }
     } catch {}
 
