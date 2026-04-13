@@ -31,7 +31,7 @@ export class AdminServicesWizard {
   @WizardStep(2)
   @On('text')
   async step2(@Ctx() ctx: AdminServicesContext, @Message('text') msg: string) {
-    if (msg === '/cancel') {
+    if (msg.startsWith('/')) {
       await ctx.reply('تم الإلغاء.');
       return ctx.scene.leave();
     }
@@ -46,7 +46,7 @@ export class AdminServicesWizard {
   @WizardStep(3)
   @On('text')
   async step3(@Ctx() ctx: AdminServicesContext, @Message('text') msg: string) {
-    if (msg === '/cancel') {
+    if (msg.startsWith('/')) {
       await ctx.reply('تم الإلغاء.');
       return ctx.scene.leave();
     }
@@ -61,7 +61,7 @@ export class AdminServicesWizard {
   @WizardStep(4)
   @On('text')
   async step4(@Ctx() ctx: AdminServicesContext, @Message('text') msg: string) {
-    if (msg === '/cancel') {
+    if (msg.startsWith('/')) {
       await ctx.reply('تم الإلغاء.');
       return ctx.scene.leave();
     }
@@ -81,7 +81,7 @@ export class AdminServicesWizard {
   @WizardStep(5)
   @On('text')
   async step5(@Ctx() ctx: AdminServicesContext, @Message('text') msg: string) {
-    if (msg === '/cancel') {
+    if (msg.startsWith('/')) {
       await ctx.reply('تم الإلغاء.');
       return ctx.scene.leave();
     }

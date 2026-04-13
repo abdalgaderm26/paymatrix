@@ -42,8 +42,8 @@ export class DepositWizard {
   @WizardStep(2)
   @On('text')
   async step2(@Ctx() ctx: WizardContext, @Message('text') msg: string) {
-    if (msg === '/cancel') {
-      await ctx.reply('تم الإلغاء.');
+    if (msg.startsWith('/')) {
+      await ctx.reply('تم الإلغاء. يرجى إرسال الأمر مرة أخرى.');
       return ctx.scene.leave();
     }
 
@@ -168,7 +168,7 @@ export class DepositWizard {
   @WizardStep(4)
   @On('text')
   async step4Text(@Ctx() ctx: WizardContext, @Message('text') msg: string) {
-    if (msg === '/cancel') {
+    if (msg.startsWith('/')) {
       await ctx.reply('تم الإلغاء.');
       return ctx.scene.leave();
     }
