@@ -101,7 +101,12 @@ export class BotUpdate {
     const from = ctx.message?.from;
     if (!from) return;
 
-    const user = await this.usersService.findByTelegramId(from.id);
+    let user = await this.usersService.findByTelegramId(from.id);
+    if (!user) {
+      await this.onStart(ctx as any);
+      user = (await this.usersService.findByTelegramId(from.id))!;
+      if (!user) return; // Paranoia check
+    }
     const lang = user?.language === 'en' ? 'en' : 'ar';
     const t = i18n[lang as keyof typeof i18n];
 
