@@ -54,7 +54,15 @@ export class BotUpdate {
       [t.btn_language],
     ]).resize();
 
-    const botUsername = ctx.botInfo?.username || 'PayMatrixBot';
+    let botUsername = process.env.BOT_USERNAME || ctx.botInfo?.username;
+    if (!botUsername) {
+      try {
+        const me = await ctx.telegram.getMe();
+        botUsername = me.username;
+      } catch (e) {
+        botUsername = 'PayMatrixBot';
+      }
+    }
 
     await ctx.reply(
       t.welcome(user.full_name, user.wallet_balance) +
@@ -112,7 +120,15 @@ export class BotUpdate {
       return;
     }
     if (text === t.btn_referral || text === i18n.ar.btn_referral || text === i18n.en.btn_referral) {
-      const botUsername = ctx.botInfo?.username || 'PayMatrixBot';
+      let botUsername = process.env.BOT_USERNAME || ctx.botInfo?.username;
+      if (!botUsername) {
+        try {
+          const me = await ctx.telegram.getMe();
+          botUsername = me.username;
+        } catch (e) {
+          botUsername = 'PayMatrixBot';
+        }
+      }
       await ctx.reply(`🔗 رابط الدعوة الخاص بك لربح المكافآت:\nhttps://t.me/${botUsername}?start=ref_${from.id}`);
       return;
     }
