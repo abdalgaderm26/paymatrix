@@ -17,12 +17,14 @@ COPY . .
 RUN npm run build --workspace=apps/api
 RUN npm run build --workspace=apps/dashboard
 
-# Runner for API
+# Runner for API (serves Dashboard static files too)
 FROM node:20-alpine AS runner
 WORKDIR /app
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /app/apps/dashboard/dist ./apps/dashboard/dist
 
 EXPOSE 3000
 CMD ["node", "apps/api/dist/main"]

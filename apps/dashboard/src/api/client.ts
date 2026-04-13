@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// In production, dashboard is served from same origin as API
+// In development, Vite proxy handles /api forwarding
+const API_BASE = import.meta.env.VITE_API_URL || '';
 const ADMIN_KEY = import.meta.env.VITE_ADMIN_KEY || '5047634413';
 
 const api = axios.create({

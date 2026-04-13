@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TelegrafModule } from 'nestjs-telegraf';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { session } from 'telegraf';
+import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { BotModule } from './bot/bot.module';
@@ -33,6 +35,11 @@ import { AdminModule } from './admin/admin.module';
         middlewares: [session()],
       }),
       inject: [ConfigService],
+    }),
+    // Serve Dashboard static files in production
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', '..', 'dashboard', 'dist'),
+      exclude: ['/api/(.*)'],
     }),
     BotModule,
     UsersModule,
