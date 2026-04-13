@@ -50,7 +50,8 @@ export class BotUpdate {
     const mainKeyboard = Markup.keyboard([
       [t.btn_services, t.btn_wallet],
       [t.btn_orders, t.btn_deposit],
-      [t.btn_support, t.btn_language],
+      [t.btn_referral, t.btn_support],
+      [t.btn_language],
     ]).resize();
 
     const botUsername = ctx.botInfo?.username || 'PayMatrixBot';
@@ -80,10 +81,11 @@ export class BotUpdate {
     const t = i18n[lang as keyof typeof i18n];
 
     const isMenuButton = [
-      t.btn_services, t.btn_wallet, t.btn_orders, t.btn_deposit, t.btn_support, t.btn_language,
+      t.btn_services, t.btn_wallet, t.btn_orders, t.btn_deposit, t.btn_support, t.btn_language, t.btn_referral,
       i18n.ar.btn_services, i18n.en.btn_services, i18n.ar.btn_wallet, i18n.en.btn_wallet,
       i18n.ar.btn_orders, i18n.en.btn_orders, i18n.ar.btn_deposit, i18n.en.btn_deposit,
       i18n.ar.btn_support, i18n.en.btn_support, i18n.ar.btn_language, i18n.en.btn_language,
+      i18n.ar.btn_referral, i18n.en.btn_referral,
     ].includes(text);
 
     if (isMenuButton && (ctx as any).scene) {
@@ -107,6 +109,11 @@ export class BotUpdate {
     }
     if (text === t.btn_support || text === i18n.ar.btn_support || text === i18n.en.btn_support) {
       await ctx.reply('🎧 الدعم الفني: أرسل استفسارك وسيقوم أحد ممثلي الدعم بالرد قريباً.');
+      return;
+    }
+    if (text === t.btn_referral || text === i18n.ar.btn_referral || text === i18n.en.btn_referral) {
+      const botUsername = ctx.botInfo?.username || 'PayMatrixBot';
+      await ctx.reply(`🔗 رابط الدعوة الخاص بك لربح المكافآت:\nhttps://t.me/${botUsername}?start=ref_${from.id}`);
       return;
     }
   }
