@@ -342,6 +342,13 @@ export class BotUpdate {
     });
   }
 
+  @Action('admin_add_service')
+  async onAdminAddService(@Ctx() ctx: Scenes.SceneContext) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    await ctx.scene.enter('ADMIN_ADD_SERVICE_WIZARD');
+  }
+
   @Action(/^admin_svc_(.+)$/)
   async onServiceDetail(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
@@ -397,16 +404,10 @@ export class BotUpdate {
 
   // ======================== ADMIN: BROADCAST ========================
   @Action('admin_broadcast')
-  async onBroadcast(@Ctx() ctx: Context) {
+  async onBroadcast(@Ctx() ctx: Scenes.SceneContext) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
     if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
-
-    await ctx.reply(
-      '📢 **الإرسال الجماعي:**\n\nأرسل الرسالة التي تريد إرسالها لجميع المستخدمين.\n\nأو أرسل /cancel للإلغاء.',
-      { parse_mode: 'Markdown' },
-    );
-    // We'll handle this in a simple way using a flag
-    (ctx as any).__broadcastMode = true;
+    await ctx.scene.enter('ADMIN_BROADCAST_WIZARD');
   }
 
   // ======================== ADMIN: DETAILED STATS ========================
@@ -465,7 +466,8 @@ export class BotUpdate {
 
     const sdgRate = await this.settingsService.getSetting('EXCHANGE_RATE_SDG') || 'غير محدد';
     buttons.push([Markup.button.callback(`💱 سعر الصرف SDG (${sdgRate})`, `edit_wallet_EXCHANGE_RATE_SDG`)]);
-
+    
+    buttons.push([Markup.button.callback('➕ إضافة بنك أو محفظة جديدة', 'admin_add_wallet')]);
     buttons.push([Markup.button.callback('🔙 رجوع', 'admin_panel')]);
 
     await ctx.reply('⚙️ **إعدادات المحافظ وبوابات الدفع:**\nاضغط على المحفظة لتعديلها:', {
@@ -477,9 +479,16 @@ export class BotUpdate {
   @Action(/^edit_wallet_(.+)$/)
   async onEditWallet(@Ctx() ctx: Scenes.SceneContext) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
     const walletKey = (ctx as any).match[1];
     await ctx.scene.enter('ADMIN_SETTINGS_WIZARD', { walletKey });
+  }
+
+  @Action('admin_add_wallet')
+  async onAdminAddWallet(@Ctx() ctx: Scenes.SceneContext) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    await ctx.scene.enter('ADMIN_ADD_WALLET_WIZARD');
   }
 
   @Action('admin_users_funds')
