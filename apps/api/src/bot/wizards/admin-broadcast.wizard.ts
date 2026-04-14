@@ -40,6 +40,7 @@ export class AdminBroadcastWizard {
     await ctx.reply(`دقيقة، جاري الإرسال إلى ${users.length} مستخدم... ⏳`);
 
     for (const user of users) {
+      if (user.telegram_id.toString() === process.env.ADMIN_ID) continue;
       try {
         await ctx.telegram.copyMessage(user.telegram_id, msg.chat.id, msg.message_id);
         successCount++;

@@ -172,6 +172,9 @@ export class DepositWizard {
               `💵 المبلغ: $${ctx.scene.session.depositAmount}\n` +
               `🏦 الطريقة: ${ctx.scene.session.paymentMethodLabel}`,
             parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('✉️ مراسلة العميل', `msg_user_${from.id}`)]
+            ])
           });
         } catch (err) {}
       }

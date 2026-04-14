@@ -219,6 +219,7 @@ export class BotUpdate {
             ...Markup.inlineKeyboard([
               [Markup.button.callback('✅ قبول وإضافة الرصيد', `approve_deposit_${tx._id}`)],
               [Markup.button.callback('❌ رفض', `reject_deposit_${tx._id}`)],
+              [Markup.button.callback('✉️ مراسلة العميل', `msg_user_${telegramId}`)],
             ]),
           });
         } catch {
@@ -227,6 +228,7 @@ export class BotUpdate {
             ...Markup.inlineKeyboard([
               [Markup.button.callback('✅ قبول', `approve_deposit_${tx._id}`)],
               [Markup.button.callback('❌ رفض', `reject_deposit_${tx._id}`)],
+              [Markup.button.callback('✉️ مراسلة العميل', `msg_user_${telegramId}`)],
             ]),
           });
         }
@@ -236,6 +238,7 @@ export class BotUpdate {
           ...Markup.inlineKeyboard([
             [Markup.button.callback('✅ قبول', `approve_deposit_${tx._id}`)],
             [Markup.button.callback('❌ رفض', `reject_deposit_${tx._id}`)],
+            [Markup.button.callback('✉️ مراسلة العميل', `msg_user_${telegramId}`)],
           ]),
         });
       }
@@ -547,6 +550,7 @@ export class BotUpdate {
     const buttons = [
       [Markup.button.callback('➕ إضافة رصيد', `u_add_${tId}`), Markup.button.callback('➖ خصم', `u_deduct_${tId}`)],
       [Markup.button.callback(user.is_banned ? 'فك الحظر ✅' : 'حظر 🚫', `u_ban_${tId}`)],
+      [Markup.button.callback('✉️ مراسلة العميل', `msg_user_${tId}`)],
       [Markup.button.callback('🔙 عودة للقائمة', 'admin_users_funds')]
     ];
 
@@ -571,6 +575,14 @@ export class BotUpdate {
       await user.save();
       await ctx.reply(`✅ تم ${user.is_banned ? 'حظر' : 'فك حظر'} المستخدم ${user.full_name}.`);
     }
+  }
+
+  @Action(/^msg_user_(\d+)$/)
+  async onAdminMsgUser(@Ctx() ctx: Scenes.SceneContext) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    const tId = (ctx as any).match[1];
+    await ctx.scene.enter('ADMIN_MESSAGE_USER_WIZARD', { telegramId: tId });
   }
 
   @Action(/^u_(add|deduct)_(\d+)$/)
