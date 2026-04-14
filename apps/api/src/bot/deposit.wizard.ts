@@ -72,8 +72,13 @@ export class DepositWizard {
     });
     buttons.push([Markup.button.callback('🚫 إلغاء العملية', 'cancel_deposit')]);
 
+    const rateStr = await this.settingsService.getSetting('EXCHANGE_RATE_SDG');
+    const rate = rateStr ? parseFloat(rateStr) : 1970;
+    const sdgAmount = Math.round(amount * rate);
+    const amountFormatted = `$${amount.toLocaleString()} (≈ ${sdgAmount.toLocaleString()} SDG)`;
+
     await ctx.reply(
-      `المبلغ المطلوب: $${amount}\n\nيرجى اختيار طريقة الدفع التي تفضلها من القائمة أدناه:`,
+      `المبلغ المطلوب: ${amountFormatted}\n\nيرجى اختيار طريقة الدفع التي تفضلها من القائمة أدناه:`,
       { ...Markup.inlineKeyboard(buttons) },
     );
 
@@ -106,8 +111,12 @@ export class DepositWizard {
       ctx.scene.session.paymentMethodLabel = labelDef.label;
       ctx.scene.session.paymentMethodValue = dbW.value;
 
+      const rateStr = await this.settingsService.getSetting('EXCHANGE_RATE_SDG');
+      const rate = rateStr ? parseFloat(rateStr) : 1970;
+      const amountFormat = `$${ctx.scene.session.depositAmount} (≈ ${Math.round(ctx.scene.session.depositAmount! * rate).toLocaleString()} SDG)`;
+
       await ctx.reply(
-        `اخترت الدفع عبر: **${labelDef.label}**\n\n📌 **بيانات التحويل الخاصة بنا:**\n\`${dbW.value}\`\n\nيرجى تحويل مبلغ $${ctx.scene.session.depositAmount} ثم إرسال **صورة إيصال التحويل** هنا ليتم التحقق منها.`,
+        `اخترت الدفع عبر: **${labelDef.label}**\n\n📌 **بيانات التحويل الخاصة بنا:**\n\`${dbW.value}\`\n\nيرجى تحويل مبلغ ${amountFormat} ثم إرسال **صورة إيصال التحويل** هنا ليتم التحقق منها.`,
         { parse_mode: 'Markdown' },
       );
       ctx.wizard.next();

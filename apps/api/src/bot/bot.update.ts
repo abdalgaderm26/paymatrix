@@ -133,8 +133,7 @@ export class BotUpdate {
       return this.onAdminPanel(ctx);
     }
     if (text === t.btn_support || text === i18n.ar.btn_support || text === i18n.en.btn_support) {
-      await ctx.reply('🎧 الدعم الفني: أرسل استفسارك وسيقوم أحد ممثلي الدعم بالرد قريباً.');
-      return;
+      return (ctx as any).scene.enter('SUPPORT_WIZARD');
     }
     if (text === t.btn_referral || text === i18n.ar.btn_referral || text === i18n.en.btn_referral) {
       let botUsername = process.env.BOT_USERNAME || ctx.botInfo?.username;
@@ -275,6 +274,9 @@ export class BotUpdate {
     }
 
     await this.transactionsService.updateStatus(txId, 'approved');
+    try {
+      await ctx.editMessageReplyMarkup(undefined);
+    } catch {}
     await ctx.reply(`✅ تمت الموافقة على الإيداع وإضافة $${tx.amount} لرصيد المستخدم.`);
   }
 
@@ -302,7 +304,10 @@ export class BotUpdate {
     }
 
     await this.transactionsService.updateStatus(txId, 'rejected');
-    await ctx.reply('❌ تم رفض طلب الإيداع.');
+    try {
+      await ctx.editMessageReplyMarkup(undefined);
+    } catch {}
+    await ctx.reply('❌ تم رفض الإيداع والتعديل على الحالة.');
   }
 
   // ======================== ADMIN: SERVICES MANAGEMENT ========================
@@ -719,17 +724,19 @@ export class BotUpdate {
       return;
     }
 
-    await ctx.reply(
+    const formattedPrice = await this.formatMoney(service.price_usd);
+    await ctx.editMessageText(
       `📦 **تفاصيل الخدمة:**\n\n` +
-      `🔹 الاسم: ${service.name}\n` +
+      `📛 الاسم: ${service.name}\n` +
       `📝 الوصف: ${service.description}\n` +
-      `💵 السعر: $${service.price_usd}\n\n` +
+      `💵 السعر: ${formattedPrice}\n\n` +
       `هل ترغب في شراء هذه الخدمة بخصم الرصيد من محفظتك؟`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ تأكيد الشراء ($${service.price_usd})`, `buy_${service._id.toString()}`)],
+          [Markup.button.callback(`✅ تأكيد الشراء (${formattedPrice})`, `buy_${service._id.toString()}`)],
           [Markup.button.callback('🔙 إلغاء والرجوع', 'view_services')],
+
         ]),
       },
     );
