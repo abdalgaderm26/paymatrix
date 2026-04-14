@@ -462,6 +462,10 @@ export class BotUpdate {
       const val = w ? (w.value.length > 15 ? w.value.substring(0, 15) + '...' : w.value) : 'غير محدد';
       return [Markup.button.callback(`📝 ${def.label} (${val})`, `edit_wallet_${def.key}`)];
     });
+
+    const sdgRate = await this.settingsService.getSetting('EXCHANGE_RATE_SDG') || 'غير محدد';
+    buttons.push([Markup.button.callback(`💱 سعر الصرف SDG (${sdgRate})`, `edit_wallet_EXCHANGE_RATE_SDG`)]);
+
     buttons.push([Markup.button.callback('🔙 رجوع', 'admin_panel')]);
 
     await ctx.reply('⚙️ **إعدادات المحافظ وبوابات الدفع:**\nاضغط على المحفظة لتعديلها:', {

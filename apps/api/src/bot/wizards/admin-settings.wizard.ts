@@ -24,10 +24,19 @@ export class AdminSettingsWizard {
     }
 
     ctx.scene.session.walletKey = state.walletKey;
-    const def = DEFAULT_WALLETS.find(w => w.key === state.walletKey);
-    ctx.scene.session.walletLabel = def?.label || state.walletKey;
+    if (state.walletKey === 'EXCHANGE_RATE_SDG') {
+      ctx.scene.session.walletLabel = 'سعر الصرف (الدولار للجنيه السوداني)';
+    } else {
+      const def = DEFAULT_WALLETS.find(w => w.key === state.walletKey);
+      ctx.scene.session.walletLabel = def?.label || state.walletKey;
+    }
 
-    await ctx.reply(`أنت الآن تقوم بتعديل إعدادات محفظة: **${ctx.scene.session.walletLabel}**\n\nيرجى إرسال رقم الحساب أو العنوان الجديد. (يمكنك إرسال تفاصيل معقدة مثل: "الاسم: فلان، الرقم: 12345")\n\nأو يمكنك الإرسال /cancel للإلغاء.`, { parse_mode: 'Markdown' });
+    let promptMsg = `أنت الآن تقوم بتعديل إعدادات محفظة: **${ctx.scene.session.walletLabel}**\n\nيرجى إرسال رقم الحساب أو العنوان الجديد. (يمكنك إرسال تفاصيل معقدة مثل: "الاسم: فلان، الرقم: 12345")\n\nأو يمكنك الإرسال /cancel للإلغاء.`;
+    if (state.walletKey === 'EXCHANGE_RATE_SDG') {
+      promptMsg = `أنت الآن تقوم بتعديل **سعر الصرف للدولار بالجنيه السوداني**.\n\nيرجى إرسال السعر الجديد، كأرقام فقط (مثال: 1950)\n\nللإلغاء أرسل /cancel`;
+    }
+
+    await ctx.reply(promptMsg, { parse_mode: 'Markdown' });
     ctx.wizard.next();
   }
 
