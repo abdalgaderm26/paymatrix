@@ -7,6 +7,7 @@ interface AdminUsersState {
   targetUserId?: number;
   operation?: 'ADD' | 'DEDUCT';
   searchMode?: boolean;
+  promoteMode?: boolean;
 }
 
 export interface AdminUsersContext extends Scenes.WizardContext {
@@ -70,11 +71,12 @@ export class AdminUsersWizard {
     }
 
     const buttons = users.map(u => [
-       Markup.button.callback(`👤 ${u.full_name} | $${u.wallet_balance}`, `admin_u_opts_${u.telegram_id}`)
+       Markup.button.callback(`👤 ${u.full_name} | $${u.wallet_balance}`, state.promoteMode ? `admin_do_promote_${u.telegram_id}` : `admin_u_opts_${u.telegram_id}`)
     ]);
     buttons.push([Markup.button.callback('بحث جديد 🔄', 'admin_search_users')]);
 
-    await ctx.reply(`✅ وجدنا ${users.length} نتائج:\nاختر مستخدماً:`, {
+    const title = state.promoteMode ? '👑 اختر المستخدم لترقيته لمشرف:' : `✅ وجدنا ${users.length} نتائج:\nاختر مستخدماً:`;
+    await ctx.reply(title, {
       ...Markup.inlineKeyboard(buttons)
     });
     return ctx.scene.leave();

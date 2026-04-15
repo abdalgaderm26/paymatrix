@@ -171,13 +171,13 @@ export class BotUpdate {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.callback('📥 مراجعة الإيداعات المعلقة', 'admin_review_deposits')],
-          [Markup.button.callback('➕ إضافة خدمة جديدة', 'admin_add_service')],
           [Markup.button.callback('📦 إدارة الخدمات', 'admin_manage_services')],
-          [Markup.button.callback('⚙️ إعدادات المحافظ والدفع', 'admin_settings_wallets')],
           [Markup.button.callback('👥 إدارة المستخدمين والأرصدة', 'admin_users_funds')],
+          [Markup.button.callback('🧾 إدارة الطلبات', 'admin_manage_orders')],
+          [Markup.button.callback('⚙️ إعدادات المحافظ والدفع', 'admin_settings_wallets')],
+          [Markup.button.callback('👑 إدارة المشرفين', 'admin_manage_admins')],
           [Markup.button.callback('📢 إرسال جماعي', 'admin_broadcast')],
           [Markup.button.callback('📊 إحصائيات مفصلة', 'admin_detailed_stats')],
-          [Markup.button.callback('🚫 حظر مستخدم', 'admin_ban_user')],
         ]),
       },
     );
@@ -330,7 +330,7 @@ export class BotUpdate {
   @Action('admin_add_service')
   async onAddService(@Ctx() ctx: Scenes.SceneContext) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
     await ctx.scene.enter('ADMIN_SERVICES_WIZARD');
   }
 
@@ -373,7 +373,7 @@ export class BotUpdate {
   @Action(/^admin_svc_(.+)$/)
   async onServiceDetail(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
 
     const serviceId = (ctx as any).match[1];
     const service = await this.servicesService.findById(serviceId);
@@ -406,7 +406,7 @@ export class BotUpdate {
   @Action(/^toggle_svc_(.+)$/)
   async onToggleService(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
     const serviceId = (ctx as any).match[1];
     const service = await this.servicesService.toggleActive(serviceId);
     if (service) {
@@ -417,17 +417,128 @@ export class BotUpdate {
   @Action(/^delete_svc_(.+)$/)
   async onDeleteService(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
     const serviceId = (ctx as any).match[1];
     const deleted = await this.servicesService.delete(serviceId);
     await ctx.reply(deleted ? '🗑️ تم حذف الخدمة بنجاح.' : '❌ الخدمة غير موجودة.');
+  }
+
+  // ======================== ADMIN: MANAGE ORDERS ========================
+  @Action('admin_manage_orders')
+  async onManageOrders(@Ctx() ctx: Context) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+
+    const { orders } = await this.ordersService.findAll(1, 10, { status: 'approved' });
+    const pendingOrders = await this.ordersService.findAll(1, 10, { status: 'pending' });
+
+    if (orders.length === 0 && pendingOrders.orders.length === 0) {
+      await ctx.reply('📋 لا توجد طلبات حالياً.', {
+        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'admin_panel')]]),
+      });
+      return;
+    }
+
+    const allOrders = [...pendingOrders.orders, ...orders].slice(0, 10);
+    let msg = '🧾 **آخر الطلبات:**\n\n';
+    for (const order of allOrders) {
+      const svc = order.service_id as any;
+      const usr = order.user_id as any;
+      const statusMap: Record<string, string> = {
+        pending: '⏳', approved: '✅', rejected: '❌',
+        waiting_payment: '💳', paid: '💰',
+      };
+      msg += `${statusMap[order.status] || '📦'} ${svc?.name || 'خدمة'} - $${order.price_usd} | ${usr?.full_name || 'مستخدم'}\n`;
+    }
+
+    await ctx.reply(msg, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'admin_panel')]]),
+    });
+  }
+
+  // ======================== ADMIN: MANAGE ADMINS ========================
+  @Action('admin_manage_admins')
+  async onManageAdmins(@Ctx() ctx: Context) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    // Only main admin can manage other admins
+    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) {
+      await ctx.reply('⛔ هذه الصلاحية متاحة فقط للمشرف الرئيسي.');
+      return;
+    }
+
+    const admins = await this.usersService.getAdmins();
+    let msg = '👑 **إدارة المشرفين:**\n\n';
+    msg += `👤 المشرف الرئيسي: ID \`${process.env.ADMIN_ID}\`\n\n`;
+    
+    if (admins.length > 0) {
+      msg += '👥 **المشرفون الفرعيون:**\n';
+      for (const admin of admins) {
+        if (admin.telegram_id.toString() === process.env.ADMIN_ID) continue;
+        msg += `├ ${admin.full_name} (\`${admin.telegram_id}\`)\n`;
+      }
+    } else {
+      msg += '📭 لا يوجد مشرفون فرعيون حالياً.\n';
+    }
+
+    msg += '\nلإضافة مشرف جديد أو إزالته، اختر من الأسفل:';
+
+    const buttons = admins
+      .filter(a => a.telegram_id.toString() !== process.env.ADMIN_ID)
+      .map(a => [Markup.button.callback(`🗑️ إزالة ${a.full_name}`, `admin_demote_${a.telegram_id}`)]);
+
+    buttons.push([Markup.button.callback('➕ ترقية مستخدم لمشرف', 'admin_promote_user')]);
+    buttons.push([Markup.button.callback('🔙 رجوع', 'admin_panel')]);
+
+    await ctx.reply(msg, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard(buttons),
+    });
+  }
+
+  @Action('admin_promote_user')
+  async onPromoteUser(@Ctx() ctx: Scenes.SceneContext) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    // Reuse search wizard to find user, then promote
+    await ctx.reply('🔍 أرسل اسم أو ID المستخدم الذي تريد ترقيته لمشرف:');
+    await ctx.scene.enter('ADMIN_USERS_WIZARD', { searchMode: true, promoteMode: true });
+  }
+
+  @Action(/^admin_demote_(\d+)$/)
+  async onDemoteAdmin(@Ctx() ctx: Context) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    const tId = parseInt((ctx as any).match[1]);
+    const user = await this.usersService.updateRole(tId, 'user');
+    if (user) {
+      await ctx.reply(`✅ تم إزالة صلاحيات المشرف من ${user.full_name}.`);
+    } else {
+      await ctx.reply('❌ المستخدم غير موجود.');
+    }
+  }
+
+  @Action(/^admin_do_promote_(\d+)$/)
+  async onDoPromote(@Ctx() ctx: Context) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    const tId = parseInt((ctx as any).match[1]);
+    const user = await this.usersService.updateRole(tId, 'admin');
+    if (user) {
+      await ctx.reply(`✅ تم ترقية **${user.full_name}** لمشرف بنجاح! يمكنه الآن الوصول للوحة التحكم.`, { parse_mode: 'Markdown' });
+      try {
+        await (ctx as any).telegram.sendMessage(tId, '👑 **مبروك!** تمت ترقيتك كمشرف في المنصة. يمكنك الآن الضغط على "لوحة التحكم" للوصول لأدوات الإدارة.', { parse_mode: 'Markdown' });
+      } catch {}
+    } else {
+      await ctx.reply('❌ المستخدم غير موجود.');
+    }
   }
 
   // ======================== ADMIN: BROADCAST ========================
   @Action('admin_broadcast')
   async onBroadcast(@Ctx() ctx: Scenes.SceneContext) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
     await ctx.scene.enter('ADMIN_BROADCAST_WIZARD');
   }
 
@@ -475,8 +586,7 @@ export class BotUpdate {
   @Action('admin_settings_wallets')
   async onAdminSettingsWallets(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    const from = ctx.from;
-    if (!from || from.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
 
     const wallets = await this.settingsService.getAllDepositMethods();
     const buttons = DEFAULT_WALLETS.map((def) => {
