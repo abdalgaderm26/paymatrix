@@ -38,9 +38,11 @@ export class UsersService {
   async findAll(page = 1, limit = 20, search?: string): Promise<{ users: User[]; total: number; pages: number }> {
     const query: any = {};
     if (search) {
+      // SECURITY: Escape regex special chars to prevent ReDoS
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query.$or = [
-        { username: { $regex: search, $options: 'i' } },
-        { full_name: { $regex: search, $options: 'i' } },
+        { username: { $regex: escaped, $options: 'i' } },
+        { full_name: { $regex: escaped, $options: 'i' } },
         { telegram_id: isNaN(Number(search)) ? undefined : Number(search) },
       ].filter(q => Object.values(q)[0] !== undefined);
     }

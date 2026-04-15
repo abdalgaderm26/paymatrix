@@ -140,7 +140,7 @@ export class DepositWizard {
     if (!user) return ctx.scene.leave();
 
     // Save transaction to database
-    await this.transactionsService.create({
+    const newTx = await this.transactionsService.create({
       user_id: user._id as any,
       type: 'deposit',
       amount: ctx.scene.session.depositAmount || 0,
@@ -149,14 +149,19 @@ export class DepositWizard {
       proof_file_id: fileId,
     });
 
+    const rateStr = await this.settingsService.getSetting('EXCHANGE_RATE_SDG');
+    const rate = rateStr ? parseFloat(rateStr) : 1970;
+    const sdgAmount = Math.round((ctx.scene.session.depositAmount || 0) * rate);
+    const amountFormatted = `$${ctx.scene.session.depositAmount} (≈ ${sdgAmount.toLocaleString()} SDG)`;
+
     await ctx.reply(
       '✅ تم استلام طلب الإيداع بنجاح!\n\n' +
-      `💵 المبلغ: $${ctx.scene.session.depositAmount}\n` +
+      `💵 المبلغ: ${amountFormatted}\n` +
       `🏦 الطريقة: ${ctx.scene.session.paymentMethodLabel}\n\n` +
       'سيتم مراجعته من قبل الإدارة وإضافة الرصيد قريباً.',
     );
 
-    // Notify admins
+    // Notify admins with approve/reject buttons
     try {
       const admins = await this.usersService.getAdmins();
       const adminIds = new Set(admins.map(a => a.telegram_id.toString()));
@@ -169,10 +174,12 @@ export class DepositWizard {
               `📥 **طلب إيداع جديد!**\n\n` +
               `👤 ${user.full_name} (@${user.username || 'N/A'})\n` +
               `🆔 ${from.id}\n` +
-              `💵 المبلغ: $${ctx.scene.session.depositAmount}\n` +
+              `💵 المبلغ: ${amountFormatted}\n` +
               `🏦 الطريقة: ${ctx.scene.session.paymentMethodLabel}`,
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
+              [Markup.button.callback('✅ قبول وإضافة الرصيد', `approve_deposit_${newTx._id}`)],
+              [Markup.button.callback('❌ رفض', `reject_deposit_${newTx._id}`)],
               [Markup.button.callback('✉️ مراسلة العميل', `msg_user_${from.id}`)]
             ])
           });

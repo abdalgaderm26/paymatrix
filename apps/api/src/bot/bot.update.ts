@@ -187,8 +187,7 @@ export class BotUpdate {
   @Action('admin_review_deposits')
   async onReviewDeposits(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    const from = ctx.from;
-    if (!from || from.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
 
     const pending = await this.transactionsService.getPendingDeposits();
 
@@ -252,8 +251,7 @@ export class BotUpdate {
   @Action(/^approve_deposit_(.+)$/)
   async onApproveDeposit(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    const from = ctx.from;
-    if (!from || from.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
 
     const txId = (ctx as any).match[1];
     const tx = await this.transactionsService.findById(txId);
@@ -262,21 +260,30 @@ export class BotUpdate {
       return;
     }
 
+    // SECURITY: Prevent double approval
+    if (tx.status !== 'pending') {
+      await ctx.reply(`⚠️ هذه المعاملة تم معالجتها مسبقاً (${tx.status}).`);
+      return;
+    }
+
+    // Mark as approved FIRST to prevent race condition
+    await this.transactionsService.updateStatus(txId, 'approved');
+
     const userDoc = tx.user_id as any;
     const telegramId = userDoc?.telegram_id;
 
     if (telegramId) {
       await this.usersService.updateBalance(telegramId, tx.amount, 'add');
       try {
+        const formatted = await this.formatMoney(tx.amount);
         await (ctx as any).telegram.sendMessage(
           telegramId,
-          `🎉 **تمت الموافقة على إيداعك!**\n\nتم إضافة $${tx.amount} إلى رصيدك بنجاح.`,
+          `🎉 **تمت الموافقة على إيداعك!**\n\nتم إضافة ${formatted} إلى رصيدك بنجاح.`,
           { parse_mode: 'Markdown' },
         );
       } catch {}
     }
 
-    await this.transactionsService.updateStatus(txId, 'approved');
     try {
       await ctx.editMessageReplyMarkup(undefined);
     } catch {}
@@ -286,12 +293,19 @@ export class BotUpdate {
   @Action(/^reject_deposit_(.+)$/)
   async onRejectDeposit(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    const from = ctx.from;
-    if (!from || from.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
 
     const txId = (ctx as any).match[1];
     const tx = await this.transactionsService.findById(txId);
     if (!tx) return;
+
+    // SECURITY: Prevent double rejection
+    if (tx.status !== 'pending') {
+      await ctx.reply(`⚠️ هذه المعاملة تم معالجتها مسبقاً (${tx.status}).`);
+      return;
+    }
+
+    await this.transactionsService.updateStatus(txId, 'rejected');
 
     const userDoc = tx.user_id as any;
     const telegramId = userDoc?.telegram_id;
@@ -306,7 +320,6 @@ export class BotUpdate {
       } catch {}
     }
 
-    await this.transactionsService.updateStatus(txId, 'rejected');
     try {
       await ctx.editMessageReplyMarkup(undefined);
     } catch {}
@@ -324,7 +337,7 @@ export class BotUpdate {
   @Action('admin_manage_services')
   async onManageServices(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
 
     const { services } = await this.servicesService.findAll(1, 20);
     if (services.length === 0) {
@@ -761,9 +774,15 @@ export class BotUpdate {
     const from = ctx.from;
     if (!from) return;
 
+    // SECURITY: Re-fetch user to get fresh balance (prevents race condition)
     const user = await this.usersService.findByTelegramId(from.id);
     const service = await this.servicesService.findById(serviceId);
     if (!user || !service) return;
+
+    if (!service.is_active) {
+      await ctx.reply('❌ هذه الخدمة غير متاحة حالياً.');
+      return;
+    }
 
     if (user.wallet_balance < service.price_usd) {
       await ctx.reply(
@@ -773,8 +792,12 @@ export class BotUpdate {
       return;
     }
 
-    // Deduct balance
-    await this.usersService.updateBalance(from.id, service.price_usd, 'deduct');
+    // SECURITY: Atomic deduct - deduct first, then create order
+    const updatedUser = await this.usersService.updateBalance(from.id, service.price_usd, 'deduct');
+    if (!updatedUser) {
+      await ctx.reply('❌ حدث خطأ أثناء معالجة الطلب. يرجى المحاولة مرة أخرى.');
+      return;
+    }
 
     // Create order
     await this.ordersService.create({
@@ -794,12 +817,24 @@ export class BotUpdate {
       status: 'approved',
     });
 
+    // Notify admin about new purchase
+    try {
+      const adminId = process.env.ADMIN_ID;
+      if (adminId) {
+        await (ctx as any).telegram.sendMessage(
+          adminId,
+          `🛒 **طلب شراء جديد!**\n\n👤 ${user.full_name} (@${user.username || 'N/A'})\n📦 ${service.name}\n💵 $${service.price_usd}`,
+          { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('✉️ مراسلة العميل', `msg_user_${from.id}`)]]) },
+        );
+      }
+    } catch {}
+
     await ctx.reply(
       `✅ **تمت عملية الشراء بنجاح!**\n\n` +
       `📦 الخدمة: ${service.name}\n` +
       `تفاصيل التسليم:\n` +
       `${service.delivery_details || 'سيتم التواصل معك لتسليم الخدمة قريبًا.'}\n\n` +
-      `رصيدك المتبقي: $${user.wallet_balance - service.price_usd}`,
+      `رصيدك المتبقي: ${await this.formatMoney(updatedUser.wallet_balance)}`,
       { parse_mode: 'Markdown' },
     );
   }

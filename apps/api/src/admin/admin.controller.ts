@@ -122,6 +122,14 @@ export class AdminController {
     const tx = await this.transactionsService.findById(id);
     if (!tx) throw new HttpException('Transaction not found', HttpStatus.NOT_FOUND);
 
+    // SECURITY: Prevent double processing
+    if (tx.status !== 'pending') {
+      throw new HttpException(`Transaction already ${tx.status}`, HttpStatus.CONFLICT);
+    }
+
+    // Mark status FIRST to prevent race condition
+    await this.transactionsService.updateStatus(id, body.status);
+
     // If approving a deposit, add balance to user
     if (body.status === 'approved' && tx.type === 'deposit') {
       const userDoc = tx.user_id as any;
@@ -135,7 +143,7 @@ export class AdminController {
       }
     }
 
-    return this.transactionsService.updateStatus(id, body.status);
+    return { success: true, status: body.status };
   }
 
   // ======================== ORDERS ========================
