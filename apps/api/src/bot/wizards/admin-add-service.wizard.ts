@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Ctx, Message, On, Wizard, WizardStep } from 'nestjs-telegraf';
 import { Scenes } from 'telegraf';
 import { ServicesService } from '../../services/services.service';
+import { UsersService } from '../../users/users.service';
 
 interface AdminAddServiceSession extends Scenes.WizardSessionData {
   serviceName?: string;
@@ -15,11 +16,21 @@ export interface AdminAddServiceContext extends Scenes.WizardContext<AdminAddSer
 @Injectable()
 @Wizard('ADMIN_ADD_SERVICE_WIZARD')
 export class AdminAddServiceWizard {
-  constructor(private readonly servicesService: ServicesService) {}
+  constructor(
+    private readonly servicesService: ServicesService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @WizardStep(1)
   async step1(@Ctx() ctx: AdminAddServiceContext) {
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return ctx.scene.leave();
+    const fromId = ctx.from?.id;
+    if (!fromId) return ctx.scene.leave();
+    let isAdmin = fromId.toString() === process.env.ADMIN_ID;
+    if (!isAdmin) {
+      const user = await this.usersService.findByTelegramId(fromId);
+      if (user?.role === 'admin') isAdmin = true;
+    }
+    if (!isAdmin) return ctx.scene.leave();
 
     await ctx.reply(
       '✨ **إضافة خدمة جديدة:**\n\nأرسل اسم الخدمة (مثال: شحن 100 USDT).\n\nأو أرسل /cancel للإلغاء.',

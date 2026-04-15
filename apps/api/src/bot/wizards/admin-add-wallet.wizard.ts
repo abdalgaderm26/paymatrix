@@ -16,7 +16,9 @@ export class AdminAddWalletWizard {
 
   @WizardStep(1)
   async step1(@Ctx() ctx: AdminAddWalletContext) {
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return ctx.scene.leave();
+    const fromId = ctx.from?.id;
+    if (!fromId) return ctx.scene.leave();
+    if (fromId.toString() !== process.env.ADMIN_ID) return ctx.scene.leave();
 
     await ctx.reply(
       '🏦 **إضافة محفظة / بنك جديد:**\n\nأرسل اسم البنك أو المحفظة الذي تريد إضافته (مثال: بنكك - الخرطوم، زين كاش، إلخ).\n\nأو أرسل /cancel للإلغاء.',
