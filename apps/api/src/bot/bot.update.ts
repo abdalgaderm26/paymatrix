@@ -18,7 +18,7 @@ export class BotUpdate {
     private readonly settingsService: SettingsService,
     private readonly transactionsService: TransactionsService,
     private readonly ordersService: OrdersService,
-  ) {}
+  ) { }
 
   async checkIsAdmin(ctx: Context): Promise<boolean> {
     const fromId = ctx.from?.id;
@@ -91,7 +91,7 @@ export class BotUpdate {
 
     await ctx.reply(
       t.welcome(user.full_name, await this.formatMoney(user.wallet_balance)) +
-        `\n\n🔗 رابط الدعوة الخاص بك لربح المكافآت:\nhttps://t.me/${botUsername}?start=ref_${from.id}`,
+      `\n\n🔗 رابط الدعوة الخاص بك لربح المكافآت:\nhttps://t.me/${botUsername}?start=ref_${from.id}`,
       { ...mainKeyboard },
     );
   }
@@ -281,12 +281,12 @@ export class BotUpdate {
           `🎉 **تمت الموافقة على إيداعك!**\n\nتم إضافة ${formatted} إلى رصيدك بنجاح.`,
           { parse_mode: 'Markdown' },
         );
-      } catch {}
+      } catch { }
     }
 
     try {
       await ctx.editMessageReplyMarkup(undefined);
-    } catch {}
+    } catch { }
     await ctx.reply(`✅ تمت الموافقة على الإيداع وإضافة $${tx.amount} لرصيد المستخدم.`);
   }
 
@@ -317,12 +317,12 @@ export class BotUpdate {
           '❌ عذراً، تم رفض طلب الإيداع الخاص بك. يرجى التأكد من صحة البيانات والمحاولة مرة أخرى.',
           { parse_mode: 'Markdown' },
         );
-      } catch {}
+      } catch { }
     }
 
     try {
       await ctx.editMessageReplyMarkup(undefined);
-    } catch {}
+    } catch { }
     await ctx.reply('❌ تم رفض الإيداع والتعديل على الحالة.');
   }
 
@@ -387,9 +387,9 @@ export class BotUpdate {
 
     const buttons = [
       [Markup.button.callback('✏️ تعديل الاسم', `edit_svc_name_${serviceId}`),
-       Markup.button.callback('💵 تعديل السعر', `edit_svc_price_${serviceId}`)],
+      Markup.button.callback('💵 تعديل السعر', `edit_svc_price_${serviceId}`)],
       [Markup.button.callback('📝 تعديل الوصف', `edit_svc_desc_${serviceId}`),
-       Markup.button.callback('📋 تعديل التسليم', `edit_svc_delivery_${serviceId}`)],
+      Markup.button.callback('📋 تعديل التسليم', `edit_svc_delivery_${serviceId}`)],
       [Markup.button.callback(toggleText, `toggle_svc_${serviceId}`)],
       [Markup.button.callback('🗑️ حذف الخدمة', `confirm_del_svc_${serviceId}`)],
       [Markup.button.callback('🔙 رجوع للقائمة', 'admin_manage_services')],
@@ -425,12 +425,14 @@ export class BotUpdate {
     try {
       await ctx.editMessageText(
         `⚠️ **هل أنت متأكد من حذف خدمة "${service.name}"؟**\n\nهذا الإجراء لا يمكن التراجع عنه.`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
-          [Markup.button.callback('✅ نعم، احذف', `delete_svc_${serviceId}`)],
-          [Markup.button.callback('❌ إلغاء', `admin_svc_${serviceId}`)],
-        ])}
+        {
+          parse_mode: 'Markdown', ...Markup.inlineKeyboard([
+            [Markup.button.callback('✅ نعم، احذف', `delete_svc_${serviceId}`)],
+            [Markup.button.callback('❌ إلغاء', `admin_svc_${serviceId}`)],
+          ])
+        }
       );
-    } catch {}
+    } catch { }
   }
 
   @Action(/^delete_svc_(.+)$/)
@@ -440,7 +442,7 @@ export class BotUpdate {
     const serviceId = (ctx as any).match[1];
     const deleted = await this.servicesService.delete(serviceId);
     if (deleted) {
-      try { await ctx.editMessageText('🗑️ تم حذف الخدمة بنجاح.'); } catch {}
+      try { await ctx.editMessageText('🗑️ تم حذف الخدمة بنجاح.'); } catch { }
       // Auto-refresh: show services list
       await this.onManageServices(ctx);
     } else {
@@ -508,7 +510,7 @@ export class BotUpdate {
     const admins = await this.usersService.getAdmins();
     let msg = '👑 **إدارة المشرفين:**\n\n';
     msg += `👤 المشرف الرئيسي: ID \`${process.env.ADMIN_ID}\`\n\n`;
-    
+
     if (admins.length > 0) {
       msg += '👥 **المشرفون الفرعيون:**\n';
       for (const admin of admins) {
@@ -561,7 +563,7 @@ export class BotUpdate {
           [t.btn_language],
         ]).resize();
         await (ctx as any).telegram.sendMessage(tId, '⚠️ تم تحديث صلاحياتك من قبل الإدارة.', { ...keyboard });
-      } catch {}
+      } catch { }
       // Auto-refresh: re-render admins list
       await this.onManageAdmins(ctx);
     } else {
@@ -588,7 +590,7 @@ export class BotUpdate {
           [t.btn_admin_panel],
         ]).resize();
         await (ctx as any).telegram.sendMessage(tId, '👑 **مبروك!** تمت ترقيتك كمشرف في المنصة. يمكنك الآن الوصول لأدوات الإدارة من الأسفل.', { parse_mode: 'Markdown', ...keyboard });
-      } catch {}
+      } catch { }
       // Auto-refresh: re-render admins list
       await this.onManageAdmins(ctx);
     } else {
@@ -709,7 +711,7 @@ export class BotUpdate {
           const customs = JSON.parse(customWalletsRaw);
           const found = customs.find((c: any) => c.key === walletKey);
           if (found) { label = found.label; value = found.value; }
-        } catch {}
+        } catch { }
       }
     }
 
@@ -742,12 +744,14 @@ export class BotUpdate {
     try {
       await ctx.editMessageText(
         `⚠️ **هل أنت متأكد من حذف هذه المحفظة بالكامل؟**\n\nلن تظهر للعملاء بعد الآن. يمكنك استعادتها لاحقاً.`,
-        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
-          [Markup.button.callback('✅ نعم، احذف بالكامل', `do_del_wallet_${walletKey}`)],
-          [Markup.button.callback('❌ إلغاء', `wallet_detail_${walletKey}`)],
-        ])}
+        {
+          parse_mode: 'Markdown', ...Markup.inlineKeyboard([
+            [Markup.button.callback('✅ نعم، احذف بالكامل', `do_del_wallet_${walletKey}`)],
+            [Markup.button.callback('❌ إلغاء', `wallet_detail_${walletKey}`)],
+          ])
+        }
       );
-    } catch {}
+    } catch { }
   }
 
   @Action(/^do_del_wallet_(.+)$/)
@@ -768,11 +772,11 @@ export class BotUpdate {
           let customs = JSON.parse(customWalletsRaw);
           customs = customs.filter((c: any) => c.key !== walletKey);
           await this.settingsService.setSetting('CUSTOM_WALLETS', JSON.stringify(customs));
-        } catch {}
+        } catch { }
       }
     }
 
-    try { await ctx.editMessageText('🗑️ تم حذف المحفظة بالكامل.'); } catch {}
+    try { await ctx.editMessageText('🗑️ تم حذف المحفظة بالكامل.'); } catch { }
     // Auto-refresh: show wallets list
     await this.onAdminSettingsWallets(ctx);
   }
@@ -783,7 +787,7 @@ export class BotUpdate {
     if (!await this.checkIsAdmin(ctx)) return;
     const walletKey = (ctx as any).match[1];
     await this.settingsService.restoreWallet(walletKey);
-    try { await ctx.editMessageText('✅ تم استعادة المحفظة بنجاح.'); } catch {}
+    try { await ctx.editMessageText('✅ تم استعادة المحفظة بنجاح.'); } catch { }
     await this.onAdminSettingsWallets(ctx);
   }
 
@@ -820,7 +824,7 @@ export class BotUpdate {
   async renderUsersPage(ctx: Scenes.SceneContext, page: number, isEdit: boolean) {
     const { users, pages } = await this.usersService.findAll(page, 7);
     const buttons = users.map(u => [
-       Markup.button.callback(`👤 ${u.full_name} | $${u.wallet_balance}`, `admin_u_opts_${u.telegram_id}`)
+      Markup.button.callback(`👤 ${u.full_name} | $${u.wallet_balance}`, `admin_u_opts_${u.telegram_id}`)
     ]);
 
     const nav = [];
@@ -1132,9 +1136,9 @@ export class BotUpdate {
             `🛒 **طلب شراء جديد!**\n\n👤 ${user.full_name} (@${user.username || 'N/A'})\n📦 ${service.name}\n💵 $${service.price_usd}`,
             { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('✉️ مراسلة العميل', `msg_user_${from.id}`)]]) },
           );
-        } catch {}
+        } catch { }
       }
-    } catch {}
+    } catch { }
 
     await ctx.reply(
       `✅ **تمت عملية الشراء بنجاح!**\n\n` +
