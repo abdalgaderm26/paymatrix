@@ -14,9 +14,10 @@ import { AdminAddServiceWizard } from './wizards/admin-add-service.wizard';
 import { AdminAddWalletWizard } from './wizards/admin-add-wallet.wizard';
 import { SupportWizard } from './wizards/support.wizard';
 import { AdminMessageUserWizard } from './wizards/admin-message.wizard';
+import { AdminEditServiceWizard } from './wizards/admin-edit-service.wizard';
 
 @Module({
   imports: [UsersModule, ServicesModule, SettingsModule, TransactionsModule, OrdersModule],
-  providers: [BotUpdate, DepositWizard, AdminSettingsWizard, AdminUsersWizard, AdminServicesWizard, AdminBroadcastWizard, AdminAddServiceWizard, AdminAddWalletWizard, SupportWizard, AdminMessageUserWizard],
+  providers: [BotUpdate, DepositWizard, AdminSettingsWizard, AdminUsersWizard, AdminServicesWizard, AdminBroadcastWizard, AdminAddServiceWizard, AdminAddWalletWizard, SupportWizard, AdminMessageUserWizard, AdminEditServiceWizard],
 })
 export class BotModule {}

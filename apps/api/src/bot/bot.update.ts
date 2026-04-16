@@ -378,22 +378,28 @@ export class BotUpdate {
     const status = service.is_active ? '🟢 مفعّلة' : '🔴 معطّلة';
     const toggleText = service.is_active ? '🔴 تعطيل الخدمة' : '🟢 تفعيل الخدمة';
 
-    await ctx.reply(
-      `📦 **تفاصيل الخدمة:**\n\n` +
+    const text = `📦 **تفاصيل الخدمة:**\n\n` +
       `📛 الاسم: ${service.name}\n` +
       `📝 الوصف: ${service.description || 'بدون وصف'}\n` +
       `💵 السعر: $${service.price_usd}\n` +
       `📋 التسليم: ${service.delivery_details || 'غير محدد'}\n` +
-      `📊 الحالة: ${status}`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback(toggleText, `toggle_svc_${serviceId}`)],
-          [Markup.button.callback('🗑️ حذف الخدمة', `delete_svc_${serviceId}`)],
-          [Markup.button.callback('🔙 رجوع للقائمة', 'admin_manage_services')],
-        ]),
-      },
-    );
+      `📊 الحالة: ${status}`;
+
+    const buttons = [
+      [Markup.button.callback('✏️ تعديل الاسم', `edit_svc_name_${serviceId}`),
+       Markup.button.callback('💵 تعديل السعر', `edit_svc_price_${serviceId}`)],
+      [Markup.button.callback('📝 تعديل الوصف', `edit_svc_desc_${serviceId}`),
+       Markup.button.callback('📋 تعديل التسليم', `edit_svc_delivery_${serviceId}`)],
+      [Markup.button.callback(toggleText, `toggle_svc_${serviceId}`)],
+      [Markup.button.callback('🗑️ حذف الخدمة', `confirm_del_svc_${serviceId}`)],
+      [Markup.button.callback('🔙 رجوع للقائمة', 'admin_manage_services')],
+    ];
+
+    try {
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) });
+    } catch {
+      await ctx.reply(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) });
+    }
   }
 
   @Action(/^toggle_svc_(.+)$/)
@@ -403,8 +409,28 @@ export class BotUpdate {
     const serviceId = (ctx as any).match[1];
     const service = await this.servicesService.toggleActive(serviceId);
     if (service) {
-      await ctx.reply(`${service.is_active ? '🟢' : '🔴'} تم ${service.is_active ? 'تفعيل' : 'تعطيل'} خدمة "${service.name}".`);
+      // Auto-refresh: re-render the detail view
+      (ctx as any).match = [null, serviceId];
+      await this.onServiceDetail(ctx);
     }
+  }
+
+  @Action(/^confirm_del_svc_(.+)$/)
+  async onConfirmDeleteService(@Ctx() ctx: Context) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    const serviceId = (ctx as any).match[1];
+    const service = await this.servicesService.findById(serviceId);
+    if (!service) return;
+    try {
+      await ctx.editMessageText(
+        `⚠️ **هل أنت متأكد من حذف خدمة "${service.name}"؟**\n\nهذا الإجراء لا يمكن التراجع عنه.`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
+          [Markup.button.callback('✅ نعم، احذف', `delete_svc_${serviceId}`)],
+          [Markup.button.callback('❌ إلغاء', `admin_svc_${serviceId}`)],
+        ])}
+      );
+    } catch {}
   }
 
   @Action(/^delete_svc_(.+)$/)
@@ -413,7 +439,26 @@ export class BotUpdate {
     if (!await this.checkIsAdmin(ctx)) return;
     const serviceId = (ctx as any).match[1];
     const deleted = await this.servicesService.delete(serviceId);
-    await ctx.reply(deleted ? '🗑️ تم حذف الخدمة بنجاح.' : '❌ الخدمة غير موجودة.');
+    if (deleted) {
+      try { await ctx.editMessageText('🗑️ تم حذف الخدمة بنجاح.'); } catch {}
+      // Auto-refresh: show services list
+      await this.onManageServices(ctx);
+    } else {
+      await ctx.reply('❌ الخدمة غير موجودة.');
+    }
+  }
+
+  // Service edit handlers - enter wizard with field to edit
+  @Action(/^edit_svc_(name|price|desc|delivery)_(.+)$/)
+  async onEditServiceField(@Ctx() ctx: Scenes.SceneContext) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    const field = (ctx as any).match[1];
+    const serviceId = (ctx as any).match[2];
+    const fieldLabels: Record<string, string> = { name: 'اسم الخدمة', price: 'السعر', desc: 'الوصف', delivery: 'تفاصيل التسليم' };
+    const fieldHints: Record<string, string> = { name: 'أرسل الاسم الجديد:', price: 'أرسل السعر الجديد بالدولار (رقم فقط):', desc: 'أرسل الوصف الجديد:', delivery: 'أرسل تفاصيل التسليم الجديدة:' };
+    await ctx.reply(`✏️ **تعديل ${fieldLabels[field]}:**\n\n${fieldHints[field]}\n\nأو أرسل /cancel للإلغاء.`, { parse_mode: 'Markdown' });
+    await ctx.scene.enter('ADMIN_EDIT_SERVICE_WIZARD', { serviceId, field });
   }
 
   // ======================== ADMIN: MANAGE ORDERS ========================
@@ -506,6 +551,19 @@ export class BotUpdate {
     const user = await this.usersService.updateRole(tId, 'user');
     if (user) {
       await ctx.reply(`✅ تم إزالة صلاحيات المشرف من ${user.full_name}.`);
+      // Send updated keyboard to demoted user (without admin button)
+      try {
+        const t = i18n[(user.language as keyof typeof i18n) || 'ar'];
+        const keyboard = Markup.keyboard([
+          [t.btn_services, t.btn_wallet],
+          [t.btn_orders, t.btn_deposit],
+          [t.btn_referral, t.btn_support],
+          [t.btn_language],
+        ]).resize();
+        await (ctx as any).telegram.sendMessage(tId, '⚠️ تم تحديث صلاحياتك من قبل الإدارة.', { ...keyboard });
+      } catch {}
+      // Auto-refresh: re-render admins list
+      await this.onManageAdmins(ctx);
     } else {
       await ctx.reply('❌ المستخدم غير موجود.');
     }
@@ -518,10 +576,21 @@ export class BotUpdate {
     const tId = parseInt((ctx as any).match[1]);
     const user = await this.usersService.updateRole(tId, 'admin');
     if (user) {
-      await ctx.reply(`✅ تم ترقية **${user.full_name}** لمشرف بنجاح! يمكنه الآن الوصول للوحة التحكم.`, { parse_mode: 'Markdown' });
+      await ctx.reply(`✅ تم ترقية **${user.full_name}** لمشرف بنجاح!`, { parse_mode: 'Markdown' });
+      // Send updated keyboard WITH admin button to promoted user
       try {
-        await (ctx as any).telegram.sendMessage(tId, '👑 **مبروك!** تمت ترقيتك كمشرف في المنصة. يمكنك الآن الضغط على "لوحة التحكم" للوصول لأدوات الإدارة.', { parse_mode: 'Markdown' });
+        const t = i18n[(user.language as keyof typeof i18n) || 'ar'];
+        const keyboard = Markup.keyboard([
+          [t.btn_services, t.btn_wallet],
+          [t.btn_orders, t.btn_deposit],
+          [t.btn_referral, t.btn_support],
+          [t.btn_language],
+          [t.btn_admin_panel],
+        ]).resize();
+        await (ctx as any).telegram.sendMessage(tId, '👑 **مبروك!** تمت ترقيتك كمشرف في المنصة. يمكنك الآن الوصول لأدوات الإدارة من الأسفل.', { parse_mode: 'Markdown', ...keyboard });
       } catch {}
+      // Auto-refresh: re-render admins list
+      await this.onManageAdmins(ctx);
     } else {
       await ctx.reply('❌ المستخدم غير موجود.');
     }
@@ -689,7 +758,9 @@ export class BotUpdate {
     if (user) {
       user.is_banned = !user.is_banned;
       await user.save();
-      await ctx.reply(`✅ تم ${user.is_banned ? 'حظر' : 'فك حظر'} المستخدم ${user.full_name}.`);
+      // Auto-refresh: re-render user detail with updated ban status
+      (ctx as any).match = [null, tId.toString()];
+      await this.onAdminUserOpts(ctx);
     }
   }
 
