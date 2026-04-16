@@ -61,6 +61,10 @@ export class TransactionsService {
       .populate('user_id', 'telegram_id username full_name');
   }
 
+  async countPendingByUser(userId: Types.ObjectId): Promise<number> {
+    return this.txModel.countDocuments({ user_id: userId, type: 'deposit', status: 'pending' });
+  }
+
   async getStats(): Promise<{
     totalDeposits: number;
     totalPayments: number;

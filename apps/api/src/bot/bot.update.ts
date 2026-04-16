@@ -327,13 +327,6 @@ export class BotUpdate {
   }
 
   // ======================== ADMIN: SERVICES MANAGEMENT ========================
-  @Action('admin_add_service')
-  async onAddService(@Ctx() ctx: Scenes.SceneContext) {
-    if (ctx.callbackQuery) await ctx.answerCbQuery();
-    if (!await this.checkIsAdmin(ctx)) return;
-    await ctx.scene.enter('ADMIN_SERVICES_WIZARD');
-  }
-
   @Action('admin_manage_services')
   async onManageServices(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
@@ -546,7 +539,7 @@ export class BotUpdate {
   @Action('admin_detailed_stats')
   async onDetailedStats(@Ctx() ctx: Context) {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
-    if (ctx.from?.id.toString() !== process.env.ADMIN_ID) return;
+    if (!await this.checkIsAdmin(ctx)) return;
 
     const [userStats, txStats, orderStats, serviceStats] = await Promise.all([
       this.usersService.getStats(),
@@ -894,6 +887,17 @@ export class BotUpdate {
       return;
     }
 
+    // SECURITY: Purchase cooldown - prevent rapid buying
+    const recentOrders = await this.ordersService.findByUser(user._id as any);
+    if (recentOrders.length > 0) {
+      const lastOrder = recentOrders[0] as any;
+      const timeDiff = Date.now() - new Date(lastOrder.createdAt).getTime();
+      if (timeDiff < 10000) { // 10 seconds cooldown
+        await ctx.reply('⏳ يرجى الانتظار قليلاً قبل إجراء عملية شراء جديدة.');
+        return;
+      }
+    }
+
     if (user.wallet_balance < service.price_usd) {
       await ctx.reply(
         `❌ رصيدك الحالي ($${user.wallet_balance}) غير كافٍ لشراء خدمة بقيمة ($${service.price_usd}).\nيرجى شحن محفظتك أولاً.`,
@@ -927,15 +931,19 @@ export class BotUpdate {
       status: 'approved',
     });
 
-    // Notify admin about new purchase
+    // Notify ALL admins about new purchase
     try {
-      const adminId = process.env.ADMIN_ID;
-      if (adminId) {
-        await (ctx as any).telegram.sendMessage(
-          adminId,
-          `🛒 **طلب شراء جديد!**\n\n👤 ${user.full_name} (@${user.username || 'N/A'})\n📦 ${service.name}\n💵 $${service.price_usd}`,
-          { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('✉️ مراسلة العميل', `msg_user_${from.id}`)]]) },
-        );
+      const admins = await this.usersService.getAdmins();
+      const adminIds = new Set(admins.map(a => a.telegram_id.toString()));
+      if (process.env.ADMIN_ID) adminIds.add(process.env.ADMIN_ID);
+      for (const aId of adminIds) {
+        try {
+          await (ctx as any).telegram.sendMessage(
+            aId,
+            `🛒 **طلب شراء جديد!**\n\n👤 ${user.full_name} (@${user.username || 'N/A'})\n📦 ${service.name}\n💵 $${service.price_usd}`,
+            { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('✉️ مراسلة العميل', `msg_user_${from.id}`)]]) },
+          );
+        } catch {}
       }
     } catch {}
 

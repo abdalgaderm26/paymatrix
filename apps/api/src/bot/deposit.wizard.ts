@@ -53,6 +53,24 @@ export class DepositWizard {
       return;
     }
 
+    if (amount > 10000) {
+      await ctx.reply('❌ الحد الأقصى للإيداع الواحد هو $10,000.');
+      return;
+    }
+
+    // SECURITY: Rate limiting - max 5 pending deposits per user
+    const from = ctx.from;
+    if (from) {
+      const user = await this.usersService.findByTelegramId(from.id);
+      if (user) {
+        const pendingCount = await this.transactionsService.countPendingByUser(user._id as any);
+        if (pendingCount >= 5) {
+          await ctx.reply('⚠️ لديك 5 طلبات إيداع معلقة بالفعل. يرجى انتظار مراجعتها قبل إرسال طلب جديد.');
+          return ctx.scene.leave();
+        }
+      }
+    }
+
     ctx.scene.session.depositAmount = amount;
 
     const allWallets = await this.settingsService.getAllDepositMethods();
