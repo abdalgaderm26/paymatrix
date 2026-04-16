@@ -24,7 +24,12 @@ export class SettingsService implements OnModuleInit {
   }
 
   async initDefaultSettings() {
+    // Get list of wallets that admin explicitly deleted
+    const deletedKeys = await this.getDeletedWalletKeys();
+
     for (const def of DEFAULT_WALLETS) {
+      // Don't recreate wallets that were explicitly deleted by admin
+      if (deletedKeys.includes(def.key)) continue;
       const exists = await this.settingModel.findOne({ key: def.key });
       if (!exists) {
         await this.settingModel.create({ key: def.key, value: def.value });
@@ -51,9 +56,48 @@ export class SettingsService implements OnModuleInit {
     );
   }
 
+  async deleteSetting(key: string): Promise<boolean> {
+    const result = await this.settingModel.findOneAndDelete({ key });
+    return !!result;
+  }
+
+  async getDeletedWalletKeys(): Promise<string[]> {
+    const raw = await this.getSetting('DELETED_WALLETS');
+    if (!raw) return [];
+    try { return JSON.parse(raw); } catch { return []; }
+  }
+
+  async markWalletDeleted(key: string): Promise<void> {
+    const deleted = await this.getDeletedWalletKeys();
+    if (!deleted.includes(key)) {
+      deleted.push(key);
+      await this.setSetting('DELETED_WALLETS', JSON.stringify(deleted));
+    }
+    // Remove the setting itself
+    await this.deleteSetting(key);
+  }
+
+  async restoreWallet(key: string): Promise<void> {
+    const deleted = await this.getDeletedWalletKeys();
+    const updated = deleted.filter(k => k !== key);
+    await this.setSetting('DELETED_WALLETS', JSON.stringify(updated));
+    // Re-create with default value
+    const def = DEFAULT_WALLETS.find(w => w.key === key);
+    if (def) {
+      await this.setSetting(key, def.value);
+    }
+  }
+
   async getAllDepositMethods(): Promise<{key: string, value: string, label?: string}[]> {
+    const deletedKeys = await this.getDeletedWalletKeys();
+
+    // Only show default wallets that haven't been deleted
+    const activeDefaultKeys = DEFAULT_WALLETS
+      .filter(w => !deletedKeys.includes(w.key))
+      .map(w => w.key);
+
     const defaults = await this.settingModel.find({ 
-      key: { $in: DEFAULT_WALLETS.map(w => w.key) } 
+      key: { $in: activeDefaultKeys } 
     }).lean();
 
     const customWalletsRaw = await this.getSetting('CUSTOM_WALLETS');

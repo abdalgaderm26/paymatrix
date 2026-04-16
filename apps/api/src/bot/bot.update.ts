@@ -677,6 +677,16 @@ export class BotUpdate {
 
     const sdgRate = await this.settingsService.getSetting('EXCHANGE_RATE_SDG') || 'غير محدد';
     buttons.push([Markup.button.callback(`💱 سعر الصرف SDG (${sdgRate})`, `edit_wallet_EXCHANGE_RATE_SDG`)]);
+
+    // Show deleted wallets that can be restored
+    const deletedKeys = await this.settingsService.getDeletedWalletKeys();
+    const deletedWallets = DEFAULT_WALLETS.filter(w => deletedKeys.includes(w.key));
+    if (deletedWallets.length > 0) {
+      for (const dw of deletedWallets) {
+        buttons.push([Markup.button.callback(`♻️ استعادة: ${dw.label}`, `restore_wallet_${dw.key}`)]);
+      }
+    }
+
     buttons.push([Markup.button.callback('➕ إضافة بنك أو محفظة جديدة', 'admin_add_wallet')]);
     buttons.push([Markup.button.callback('🔙 رجوع', 'admin_panel')]);
 
@@ -739,14 +749,12 @@ export class BotUpdate {
     if (ctx.callbackQuery) await ctx.answerCbQuery();
     if (!await this.checkIsAdmin(ctx)) return;
     const walletKey = (ctx as any).match[1];
-    const def = DEFAULT_WALLETS.find(w => w.key === walletKey);
-    const actionText = def ? 'مسح بيانات' : 'حذف';
 
     try {
       await ctx.editMessageText(
-        `⚠️ **هل أنت متأكد من ${actionText} هذه المحفظة؟**\n\n${def ? 'سيتم إعادة القيمة لـ "غير محدد" ولن تظهر للعملاء.' : 'سيتم حذفها نهائياً.'}`,
+        `⚠️ **هل أنت متأكد من حذف هذه المحفظة بالكامل؟**\n\nلن تظهر للعملاء بعد الآن. يمكنك استعادتها لاحقاً.`,
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
-          [Markup.button.callback(`✅ نعم، ${actionText}`, `do_del_wallet_${walletKey}`)],
+          [Markup.button.callback('✅ نعم، احذف بالكامل', `do_del_wallet_${walletKey}`)],
           [Markup.button.callback('❌ إلغاء', `wallet_detail_${walletKey}`)],
         ])}
       );
@@ -761,8 +769,8 @@ export class BotUpdate {
     const def = DEFAULT_WALLETS.find(w => w.key === walletKey);
 
     if (def) {
-      // Default wallet: reset to "غير محدد"
-      await this.settingsService.setSetting(walletKey, 'غير محدد');
+      // Default wallet: mark as deleted so it won't come back on restart
+      await this.settingsService.markWalletDeleted(walletKey);
     } else {
       // Custom wallet: remove from CUSTOM_WALLETS array
       const customWalletsRaw = await this.settingsService.getSetting('CUSTOM_WALLETS');
@@ -775,8 +783,18 @@ export class BotUpdate {
       }
     }
 
-    try { await ctx.editMessageText('✅ تم بنجاح.'); } catch {}
+    try { await ctx.editMessageText('🗑️ تم حذف المحفظة بالكامل.'); } catch {}
     // Auto-refresh: show wallets list
+    await this.onAdminSettingsWallets(ctx);
+  }
+
+  @Action(/^restore_wallet_(.+)$/)
+  async onRestoreWallet(@Ctx() ctx: Context) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    const walletKey = (ctx as any).match[1];
+    await this.settingsService.restoreWallet(walletKey);
+    try { await ctx.editMessageText('✅ تم استعادة المحفظة بنجاح.'); } catch {}
     await this.onAdminSettingsWallets(ctx);
   }
 
