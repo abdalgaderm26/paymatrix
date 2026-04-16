@@ -653,25 +653,14 @@ export class BotUpdate {
     const wallets = await this.settingsService.getAllDepositMethods();
     const buttons: ReturnType<typeof Markup.button.callback>[][] = [];
 
-    // Default wallets
-    for (const def of DEFAULT_WALLETS) {
-      const w = wallets.find((x) => x.key === def.key);
-      const val = w ? (w.value.length > 15 ? w.value.substring(0, 15) + '...' : w.value) : 'غير محدد';
+    // Show all active wallets (defaults that aren't deleted + custom)
+    for (const w of wallets) {
+      const def = DEFAULT_WALLETS.find(d => d.key === w.key);
+      const label = w.label || (def ? def.label : w.key);
+      const val = w.value.length > 15 ? w.value.substring(0, 15) + '...' : w.value;
+      const icon = def ? '📝' : '🏦';
       buttons.push([
-        Markup.button.callback(`📝 ${def.label} (${val})`, `wallet_detail_${def.key}`),
-      ]);
-    }
-
-    // Custom wallets
-    const customWalletsRaw = await this.settingsService.getSetting('CUSTOM_WALLETS');
-    let customWallets: { key: string; label: string; value: string }[] = [];
-    if (customWalletsRaw) {
-      try { customWallets = JSON.parse(customWalletsRaw); } catch {}
-    }
-    for (const cw of customWallets) {
-      const val = cw.value.length > 15 ? cw.value.substring(0, 15) + '...' : cw.value;
-      buttons.push([
-        Markup.button.callback(`🏦 ${cw.label} (${val})`, `wallet_detail_${cw.key}`),
+        Markup.button.callback(`${icon} ${label} (${val})`, `wallet_detail_${w.key}`),
       ]);
     }
 
