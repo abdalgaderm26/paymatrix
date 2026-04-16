@@ -651,22 +651,133 @@ export class BotUpdate {
     if (!await this.checkIsAdmin(ctx)) return;
 
     const wallets = await this.settingsService.getAllDepositMethods();
-    const buttons = DEFAULT_WALLETS.map((def) => {
+    const buttons: ReturnType<typeof Markup.button.callback>[][] = [];
+
+    // Default wallets
+    for (const def of DEFAULT_WALLETS) {
       const w = wallets.find((x) => x.key === def.key);
       const val = w ? (w.value.length > 15 ? w.value.substring(0, 15) + '...' : w.value) : 'غير محدد';
-      return [Markup.button.callback(`📝 ${def.label} (${val})`, `edit_wallet_${def.key}`)];
-    });
+      buttons.push([
+        Markup.button.callback(`📝 ${def.label} (${val})`, `wallet_detail_${def.key}`),
+      ]);
+    }
+
+    // Custom wallets
+    const customWalletsRaw = await this.settingsService.getSetting('CUSTOM_WALLETS');
+    let customWallets: { key: string; label: string; value: string }[] = [];
+    if (customWalletsRaw) {
+      try { customWallets = JSON.parse(customWalletsRaw); } catch {}
+    }
+    for (const cw of customWallets) {
+      const val = cw.value.length > 15 ? cw.value.substring(0, 15) + '...' : cw.value;
+      buttons.push([
+        Markup.button.callback(`🏦 ${cw.label} (${val})`, `wallet_detail_${cw.key}`),
+      ]);
+    }
 
     const sdgRate = await this.settingsService.getSetting('EXCHANGE_RATE_SDG') || 'غير محدد';
     buttons.push([Markup.button.callback(`💱 سعر الصرف SDG (${sdgRate})`, `edit_wallet_EXCHANGE_RATE_SDG`)]);
-    
     buttons.push([Markup.button.callback('➕ إضافة بنك أو محفظة جديدة', 'admin_add_wallet')]);
     buttons.push([Markup.button.callback('🔙 رجوع', 'admin_panel')]);
 
-    await ctx.reply('⚙️ **إعدادات المحافظ وبوابات الدفع:**\nاضغط على المحفظة لتعديلها:', {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard(buttons),
-    });
+    const text = '⚙️ **إعدادات المحافظ وبوابات الدفع:**\nاضغط على المحفظة لعرض الخيارات:';
+    try {
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) });
+    } catch {
+      await ctx.reply(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) });
+    }
+  }
+
+  @Action(/^wallet_detail_(.+)$/)
+  async onWalletDetail(@Ctx() ctx: Context) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    const walletKey = (ctx as any).match[1];
+
+    // Check if it's a default wallet
+    const def = DEFAULT_WALLETS.find(w => w.key === walletKey);
+    let label = '', value = '';
+
+    if (def) {
+      label = def.label;
+      const saved = await this.settingsService.getSetting(walletKey);
+      value = saved || 'غير محدد';
+    } else {
+      // Custom wallet
+      const customWalletsRaw = await this.settingsService.getSetting('CUSTOM_WALLETS');
+      if (customWalletsRaw) {
+        try {
+          const customs = JSON.parse(customWalletsRaw);
+          const found = customs.find((c: any) => c.key === walletKey);
+          if (found) { label = found.label; value = found.value; }
+        } catch {}
+      }
+    }
+
+    if (!label) {
+      await ctx.reply('❌ المحفظة غير موجودة.');
+      return;
+    }
+
+    const buttons = [
+      [Markup.button.callback('✏️ تعديل البيانات', `edit_wallet_${walletKey}`)],
+      [Markup.button.callback('🗑️ مسح البيانات / حذف', `confirm_del_wallet_${walletKey}`)],
+      [Markup.button.callback('🔙 رجوع', 'admin_settings_wallets')],
+    ];
+
+    const text = `🏦 **تفاصيل المحفظة:**\n\n📛 الاسم: ${label}\n📋 البيانات: ${value}`;
+
+    try {
+      await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) });
+    } catch {
+      await ctx.reply(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) });
+    }
+  }
+
+  @Action(/^confirm_del_wallet_(.+)$/)
+  async onConfirmDeleteWallet(@Ctx() ctx: Context) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    const walletKey = (ctx as any).match[1];
+    const def = DEFAULT_WALLETS.find(w => w.key === walletKey);
+    const actionText = def ? 'مسح بيانات' : 'حذف';
+
+    try {
+      await ctx.editMessageText(
+        `⚠️ **هل أنت متأكد من ${actionText} هذه المحفظة؟**\n\n${def ? 'سيتم إعادة القيمة لـ "غير محدد" ولن تظهر للعملاء.' : 'سيتم حذفها نهائياً.'}`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
+          [Markup.button.callback(`✅ نعم، ${actionText}`, `do_del_wallet_${walletKey}`)],
+          [Markup.button.callback('❌ إلغاء', `wallet_detail_${walletKey}`)],
+        ])}
+      );
+    } catch {}
+  }
+
+  @Action(/^do_del_wallet_(.+)$/)
+  async onDoDeleteWallet(@Ctx() ctx: Context) {
+    if (ctx.callbackQuery) await ctx.answerCbQuery();
+    if (!await this.checkIsAdmin(ctx)) return;
+    const walletKey = (ctx as any).match[1];
+    const def = DEFAULT_WALLETS.find(w => w.key === walletKey);
+
+    if (def) {
+      // Default wallet: reset to "غير محدد"
+      await this.settingsService.setSetting(walletKey, 'غير محدد');
+    } else {
+      // Custom wallet: remove from CUSTOM_WALLETS array
+      const customWalletsRaw = await this.settingsService.getSetting('CUSTOM_WALLETS');
+      if (customWalletsRaw) {
+        try {
+          let customs = JSON.parse(customWalletsRaw);
+          customs = customs.filter((c: any) => c.key !== walletKey);
+          await this.settingsService.setSetting('CUSTOM_WALLETS', JSON.stringify(customs));
+        } catch {}
+      }
+    }
+
+    try { await ctx.editMessageText('✅ تم بنجاح.'); } catch {}
+    // Auto-refresh: show wallets list
+    await this.onAdminSettingsWallets(ctx);
   }
 
   @Action(/^edit_wallet_(.+)$/)
